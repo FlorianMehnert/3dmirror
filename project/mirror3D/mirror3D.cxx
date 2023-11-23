@@ -299,8 +299,8 @@ public:
 				rgba8 point_color;
 				if (rgbd_inp.map_depth_to_point(x, y, depths[i], &p[0])) {
 					switch (color_frame.pixel_format) {
-					case PF_BGR:
-					case PF_BGRA:
+					case rgbd::PF_BGR:
+					case rgbd::PF_BGRA:
 						if (color_frame.nr_bits_per_pixel == 32) {
 							point_color = rgba8(colors[bytes_per_pixel * i + 2], colors[bytes_per_pixel * i + 1], colors[bytes_per_pixel * i], colors[bytes_per_pixel * i + 3]);
 						}
@@ -308,8 +308,8 @@ public:
 							point_color = rgba8(colors[bytes_per_pixel * i + 2], colors[bytes_per_pixel * i + 1], colors[bytes_per_pixel * i], 255);
 						}
 						break;
-					case PF_RGB:
-					case PF_RGBA:
+					case rgbd::PF_RGB:
+					case rgbd::PF_RGBA:
 						if (color_frame.nr_bits_per_pixel == 32) {
 							point_color = rgba8(colors[bytes_per_pixel * i], colors[bytes_per_pixel * i + 1], colors[bytes_per_pixel * i + 2], colors[bytes_per_pixel * i + 3]);
 						}
@@ -317,7 +317,7 @@ public:
 							point_color = rgba8(colors[bytes_per_pixel * i], colors[bytes_per_pixel * i + 1], colors[bytes_per_pixel * i + 2], 255);
 						}
 						break;
-					case PF_BAYER:
+					case rgbd::PF_BAYER:
 						point_color = rgba8(colors[i], colors[i], colors[i], 255);
 						break;
 					}
