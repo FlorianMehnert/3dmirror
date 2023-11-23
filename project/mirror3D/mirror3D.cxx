@@ -12,6 +12,8 @@
 #include <rgbd_render/rgbd_point_renderer.h>
 #include <cgv/utils/pointer_test.h>
 #include <chrono>
+#include <mirror3D.h>
+#include "frame.h"
 
 //#include <cgv_gl/point_renderer.h>
 //#include <cgv_gl/gl/gl.h>
@@ -213,6 +215,135 @@ public:
 		}
 		glEnable(GL_CULL_FACE);
 	}
+
+	// see rgbd_control for further references
+	size_t construct_point_cloud_cgv()
+	{
+		cgv::math::distortion_inversion_epsilon<double>();
+		for (uint16_t y = 0; y < calib.depth.h; ++y) {
+			for (uint16_t x = 0; x < calib.depth.w; ++x) {
+				uint16_t depth = reinterpret_cast<const uint16_t&>(depth_frame.frame_data[(y * calib.depth.w + x) * depth_frame.get_nr_bytes_per_pixel()]);
+				if (depth == 0)
+					continue;
+				uint8_t* pix_ptr = reinterpret_cast<uint8_t*>(&warped_color_frame.frame_data[(y * calib.depth.w + x) * warped_color_frame.get_nr_bytes_per_pixel()]);
+				rgba8 c(pix_ptr[2], pix_ptr[1], pix_ptr[0], 255);
+
+				vec3 p;
+				vec2 xd;
+
+				// if used distortion map
+				if (false) {
+					continue;
+				}
+				else {
+					unsigned iterations = 1;
+					dvec2 xu = calib.depth.pixel_to_image_coordinates(dvec2(double(x), double(y)));
+					dvec2 xd_T = xu;
+					auto dir = calib.depth.invert_distortion_model(xu, xd_T, true);
+					if (dir != cgv::math::distorted_pinhole_types::distortion_inversion_result::convergence)
+						continue;
+					xd = xd_T;
+				}
+				{
+					dvec3 p_d(depth * xd[0], depth * xd[1], depth);
+					p_d = 0.001 * ((p_d + pose_position(calib.color.pose)) * pose_orientation(calib.color.pose));
+					dvec2 xu, xd(p_d[0] / p_d[2], p_d[1] / p_d[2]);
+					auto result = calib.color.apply_distortion_model(xd, xu);
+					if (result != cgv::math::distorted_pinhole_types::distortion_result::success)
+						c = rgba8(128, 0, 0, 255);
+					else {
+						dvec2 xp = calib.color.image_to_pixel_coordinates(xu);
+						if (xp[0] < 0 || xp[1] < 0 || xp[0] >= color_frame.width || xp[1] >= color_frame.height)
+							c = rgba8(255, 0, 255, 255);
+						else {
+							uint16_t x = uint16_t(xp[0]);
+							uint16_t y = uint16_t(xp[1]);
+							const uint8_t* pix_ptr = reinterpret_cast<const uint8_t*>(&color_frame.frame_data[(y * color_frame.width + x) * color_frame.get_nr_bytes_per_pixel()]);
+							c = rgba8(pix_ptr[2], pix_ptr[1], pix_ptr[0], 255);
+						}
+					}
+				}
+				float d_m = 0.001f * depth;
+				p = vec3(-d_m * float(xd[0]), -d_m * float(xd[1]), d_m);
+				P.push_back(p);
+				C.push_back(c);
+			}
+		}
+		return P.size();
+	}
+
+	size_t construct_point_cloud()
+	{
+		P.clear();
+		C.clear();
+		const unsigned short* depths = reinterpret_cast<const unsigned short*>(&depth_frame.frame_data.front());
+		const unsigned char* colors = reinterpret_cast<const unsigned char*>(&color_frame.frame_data.front());
+		// if remap_color
+		if (false) {
+			rgbd_inp.map_color_to_depth(depth_frame, color_frame, warped_color_frame);
+			// if do_bilateral_filter
+			if (false) {
+				//bilatral_filter();
+			}
+			colors = reinterpret_cast<const unsigned char*>(&warped_color_frame.frame_data.front());
+		}
+		// if cgv_reconstruct
+		if (false)
+			return construct_point_cloud_cgv();
+		unsigned bytes_per_pixel = color_frame.nr_bits_per_pixel / 8;
+		int i = 0;
+		float s = 1.0f / 255;
+		for (int y = 0; y < depth_frame.height; ++y)
+			for (int x = 0; x < depth_frame.width; ++x) {
+				vec3 p;
+				rgba8 point_color;
+				if (rgbd_inp.map_depth_to_point(x, y, depths[i], &p[0])) {
+					switch (color_frame.pixel_format) {
+					case PF_BGR:
+					case PF_BGRA:
+						if (color_frame_2.nr_bits_per_pixel == 32) {
+							point_color = rgba8(colors[bytes_per_pixel * i + 2], colors[bytes_per_pixel * i + 1], colors[bytes_per_pixel * i], colors[bytes_per_pixel * i + 3]);
+						}
+						else {
+							point_color = rgba8(colors[bytes_per_pixel * i + 2], colors[bytes_per_pixel * i + 1], colors[bytes_per_pixel * i], 255);
+						}
+						break;
+					case PF_RGB:
+					case PF_RGBA:
+						if (color_frame_2.nr_bits_per_pixel == 32) {
+							point_color = rgba8(colors[bytes_per_pixel * i], colors[bytes_per_pixel * i + 1], colors[bytes_per_pixel * i + 2], colors[bytes_per_pixel * i + 3]);
+						}
+						else {
+							point_color = rgba8(colors[bytes_per_pixel * i], colors[bytes_per_pixel * i + 1], colors[bytes_per_pixel * i + 2], 255);
+						}
+						break;
+					case PF_BAYER:
+						point_color = rgba8(colors[i], colors[i], colors[i], 255);
+						break;
+					}
+					//filter points without color for 32 bit formats
+					static const rgba8 filter_color = rgba8(0, 0, 0, 0);
+					if (!(point_color == filter_color)) {
+						C.push_back(point_color);
+						//C2.push_back(gray_scale);
+						// flipping y to make it the same direction as in pixel y coordinate
+						p[1] = -p[1];
+						P.push_back(p);
+					}
+				}
+				++i;
+			}
+		//std::cout << "warpped_color_size: " << i << std::endl;
+		/* debug code to print out bounding box of points */
+		/*
+		box3 box;
+		for (const auto& p : P2)
+			box.add_point(p);
+		std::cout << "constructed " << P2.size() << " points with box = " << box << std::endl;
+		*/
+		return P.size();
+	}
+
 };
 
 #include <cgv/base/register.h>

@@ -3,7 +3,7 @@ projectType="application_plugin";
 projectName="mirror3D";
 projectGUID="14208FD1-D758-4756-A511-F6ACB444506E";
 addProjectDirs=[CGV_DIR."/libs", CGV_DIR."/3rd", CGV_DIR."/plugins"];
-addIncDirs    =[INPUT_DIR, CGV_BUILD_DIR."/mirror3D"];
+addIncDirs    =[INPUT_DIR, CGV_BUILD_DIR."/mirror3D", CGV_DIR."/libs/rgbd_capture"];
 addProjectDeps=["cgv_utils", "cgv_type","cgv_data","cgv_base", "cgv_math", "cgv_signal", "cgv_reflect", 
 				"cgv_media", "cgv_os", "cgv_gui", "cgv_render", "cgv_gl", 
                 "cgv_viewer", 
