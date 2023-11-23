@@ -12,6 +12,7 @@
 #include <rgbd_render/rgbd_point_renderer.h>
 #include <cgv/utils/pointer_test.h>
 #include <chrono>
+
 #include <mirror3D.h>
 #include "frame.h"
 
@@ -48,6 +49,9 @@ protected:
 	cgv::render::texture depth_tex, color_tex;
 
 	cgv::render::view* view_ptr = 0;
+
+	// toggle via gui - construct pcl or use frames and render points
+	bool render_pcl = true;
 public:
 	mirror3D() : color_tex("uint8[R,G,B]"), depth_tex("uint16[R]")
 	{
@@ -182,38 +186,82 @@ public:
 	}
 	void draw(cgv::render::context& ctx)
 	{
-		if (!pr.ref_prog().is_linked())
-			return;
-		if (!depth_tex.is_created())
-			return;
+		render_pcl = true;
+		if (!render_pcl) {
+			if (!pr.ref_prog().is_linked())
+				return;
+			if (!depth_tex.is_created())
+				return;
 
-		glDisable(GL_CULL_FACE);
-		if (calib_outofdate) {
-			pr.set_calibration(calib);
-			calib_outofdate = false;
+			glDisable(GL_CULL_FACE);
+			if (calib_outofdate) {
+				pr.set_calibration(calib);
+				calib_outofdate = false;
+			}
+			if (view_ptr)
+				pr.set_y_view_angle(float(view_ptr->get_y_view_angle()));
+			pr.set_render_style(prs);
+			if (!pr.do_geometry_less_rendering())
+				pr.set_position_array(ctx, sP);
+			if (!pr.do_lookup_color())
+				pr.set_color_array(ctx, sC);
+			if (pr.validate_and_enable(ctx)) {
+				depth_tex.enable(ctx, 0);
+				if (pr.do_lookup_color())
+					color_tex.enable(ctx, 1);
+				if (pr.do_geometry_less_rendering())
+					pr.ref_prog().set_uniform(ctx, "depth_image", 0);
+				pr.ref_prog().set_uniform(ctx, "color_image", 1);
+				pr.draw(ctx, 0, sP.size());
+				pr.disable(ctx);
+				if (pr.do_lookup_color())
+					color_tex.disable(ctx);
+				if (pr.do_geometry_less_rendering())
+					depth_tex.disable(ctx);
+			}
+			glEnable(GL_CULL_FACE);
 		}
-		if (view_ptr)
-			pr.set_y_view_angle(float(view_ptr->get_y_view_angle()));
-		pr.set_render_style(prs);
-		if (!pr.do_geometry_less_rendering())
-			pr.set_position_array(ctx, sP);
-		if (!pr.do_lookup_color())
-			pr.set_color_array(ctx, sC);
-		if (pr.validate_and_enable(ctx)) {
-			depth_tex.enable(ctx, 0);
-			if (pr.do_lookup_color())
-				color_tex.enable(ctx, 1);
-			if (pr.do_geometry_less_rendering())
-				pr.ref_prog().set_uniform(ctx, "depth_image", 0);
-			pr.ref_prog().set_uniform(ctx, "color_image", 1);
-			pr.draw(ctx, 0, sP.size());
-			pr.disable(ctx);
-			if (pr.do_lookup_color())
-				color_tex.disable(ctx);
-			if (pr.do_geometry_less_rendering())
-				depth_tex.disable(ctx);
+		else{
+			// very slow point_cloud drawing
+			construct_point_cloud();
+
+			// enable shader using the code from rgbd_control
+			if (M_POINTS.size() > 0) {
+				ctx.mul_modelview_matrix(cgv::math::translate4<double>(1.5, 0, 0));
+				if (M_TRIANGLES.size() > 0) {
+					ctx.mul_modelview_matrix(cgv::math::scale4<double>(1.0 / 128, 1.0 / 128, -1.0 / 128));
+					cgv::render::shader_program& prog = rgbd_prog;
+					if (prog.is_created()) {
+						color.enable(ctx, 0);
+						prog.set_uniform(ctx, "color_texture", 0);
+						prog.enable(ctx);
+						glDisable(GL_CULL_FACE);
+						float* tex_coords = nullptr;
+						if (M_UV.size() > 0) {
+							tex_coords = reinterpret_cast<float*>(M_UV.data());
+						}
+						ctx.draw_faces(reinterpret_cast<float*>(M_POINTS.data()), nullptr, tex_coords,
+							reinterpret_cast<int32_t*>(M_TRIANGLES.data()), nullptr, reinterpret_cast<int32_t*>(M_TRIANGLES.data()), int(M_TRIANGLES.size()), 3);
+						glEnable(GL_CULL_FACE);
+						prog.disable(ctx);
+						color.disable(ctx);
+					}
+					ctx.mul_modelview_matrix(cgv::math::scale4<double>(128, 128, -128));
+				}
+				else {
+					pr.set_render_style(prs);
+					pr.set_position_array(ctx, M_POINTS);
+					std::vector<rgba8> colors(M_POINTS.size(), rgba8(127, 127, 127, 255));
+					pr.set_color_array(ctx, colors);
+					if (pr.validate_and_enable(ctx)) {
+						glDrawArrays(GL_POINTS, 0, (GLsizei)M_POINTS.size());
+						pr.disable(ctx);
+					}
+				}
+				ctx.mul_modelview_matrix(cgv::math::translate4<double>(-1.5, 0, 0));
+			}
+
 		}
-		glEnable(GL_CULL_FACE);
 	}
 
 	// see rgbd_control for further references
@@ -272,6 +320,7 @@ public:
 		return P.size();
 	}
 
+	// see rgbd_control
 	size_t construct_point_cloud()
 	{
 		P.clear();
