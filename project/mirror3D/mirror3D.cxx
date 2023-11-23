@@ -301,7 +301,7 @@ public:
 					switch (color_frame.pixel_format) {
 					case PF_BGR:
 					case PF_BGRA:
-						if (color_frame_2.nr_bits_per_pixel == 32) {
+						if (color_frame.nr_bits_per_pixel == 32) {
 							point_color = rgba8(colors[bytes_per_pixel * i + 2], colors[bytes_per_pixel * i + 1], colors[bytes_per_pixel * i], colors[bytes_per_pixel * i + 3]);
 						}
 						else {
@@ -310,7 +310,7 @@ public:
 						break;
 					case PF_RGB:
 					case PF_RGBA:
-						if (color_frame_2.nr_bits_per_pixel == 32) {
+						if (color_frame.nr_bits_per_pixel == 32) {
 							point_color = rgba8(colors[bytes_per_pixel * i], colors[bytes_per_pixel * i + 1], colors[bytes_per_pixel * i + 2], colors[bytes_per_pixel * i + 3]);
 						}
 						else {
