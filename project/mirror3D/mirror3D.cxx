@@ -74,7 +74,7 @@ protected:
 	rgbd::rgbd_point_renderer pr;
 
 	// toggle via gui - construct pcl or use frames and render points
-	bool surfel = true;
+	bool surfel = false;
 public:
 	mirror3D() : color_tex("uint8[R,G,B]"), depth_tex("uint16[R]")
 	{	
@@ -292,13 +292,21 @@ public:
 				int num_points = pcl.get_nr_points();
 				sr = ref_surfel_renderer(ctx);
 				sr.set_position_array(ctx, &pcl.pnt(0), num_points);
-				// would require to calculate normals first
-				//sr.set_normal_array(ctx, &pcl.nml(0), num_points);
+
+				// looks like there is already a function for normal creation
+				if (!pcl.has_normals()) {
+					pcl.create_normals();
+					for (int i = 0; i < pcl.get_nr_points(); ++i)
+						pcl.nml(i) = cgv::math::fvec<float, 3>(1, 0, 0);
+				}
+
+				sr.set_normal_array(ctx, &pcl.nml(0), num_points);
 
 				cgv::math::fvec<float, 4> point_color = vec4( 0.0, 0.0, 1.0, 0.8 );
 				std::vector<cgv::math::fvec<float, 4>> color(num_points, point_color);
 				sr.set_color_array(ctx, color);
 				sr.render(ctx, 0, num_points);
+				sr.draw(ctx, 0, pcl.get_nr_points());
 			}
 			ctx.pop_modelview_matrix();
 		}
