@@ -295,9 +295,9 @@ public:
 				// would require to calculate normals first
 				//sr.set_normal_array(ctx, &pcl.nml(0), num_points);
 
-				std::vector<cgv::render::vec4> point_color{ 0.0, 0.0, 1.0, 0.8 };
-				std::vector<cgv::math::fvec<float, 4>> color(num_points, vec4(0.0, 0.0, 1.0, 0.8));
-				//sr.set_color_array(ctx, point_color);
+				cgv::math::fvec<float, 4> point_color = vec4( 0.0, 0.0, 1.0, 0.8 );
+				std::vector<cgv::math::fvec<float, 4>> color(num_points, point_color);
+				sr.set_color_array(ctx, color);
 				sr.render(ctx, 0, num_points);
 			}
 			ctx.pop_modelview_matrix();
