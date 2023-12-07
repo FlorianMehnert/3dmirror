@@ -20,12 +20,22 @@
 // constructing pointclouds
 #include "point_cloud/point_cloud.h"
 
+// timer event for camera
+#include <future>
+
 using namespace cgv::render;
 
 //#include <cgv_gl/point_renderer.h>
 #include <cgv_gl/surfel_renderer.h>
 
 //#include <cgv_gl/gl/gl.h>
+
+// from vr_rgbd
+struct vertex : public cgv::render::render_types
+{
+	vec3 point;
+	rgba8 color;
+};
 
 class mirror3D :
 	public rgbd::rgbd_starter<cgv::base::node>,
@@ -57,8 +67,11 @@ protected:
 	std::vector<vec3> P, P2;
 	std::vector<rgb8> C, C2;
 
-	// init empty pointcloud of type pointcloud
-	point_cloud &pcl = point_cloud();
+	// init intermediate pointcloud
+	point_cloud &intermediate_pcl = point_cloud();
+	
+	// init current pointcloud
+	point_cloud &current_pcl = point_cloud();
 
 	// color and depth frames from kinect
 	rgbd::frame_type depth_frame;
@@ -73,6 +86,12 @@ protected:
 	// default point renderer
 	rgbd::rgbd_point_renderer pr;
 
+	// somthing for the timer event from vr_rgbd
+	std::future<size_t> future_handle;
+
+	/// intermediate point cloud and to be rendered point cloud
+	//std::vector<vertex> intermediate_pc, current_pc;
+
 	// toggle via gui - construct pcl or use frames and render points
 	bool surfel = false;
 public:
@@ -86,10 +105,11 @@ public:
 		
 		// set surfel style
 		source_srs.measure_point_size_in_pixel = false;
-		source_srs.point_size = 0.25f;
+		source_srs.point_size = 1.25f;
 		source_srs.blend_width_in_pixel = 1.0f;
 		source_srs.blend_points = true;
 		source_srs.illumination_mode = cgv::render::IM_TWO_SIDED;
+		connect(cgv::gui::get_animation_trigger().shoot, this, &mirror3D::timer_event);
 
 	}
 	void on_set(void* member_ptr)
@@ -220,12 +240,7 @@ public:
 			}
 			if (depth_frame_changed) {
 				create_or_update_texture_from_frame(ctx, depth_tex, depth_frame);
-				
-				// adding surfel renderer on init frame (in draw_point_cloud in icp_tools)
-				cgv::render::surface_renderer& sr = ref_surfel_renderer(ctx);
-				sr.set_render_style(source_srs);
-				
-				depth_frame_changed = false;
+
 			}
 
 			// at this point sP and sC are populated with point data
@@ -235,16 +250,114 @@ public:
 					rgbd::construct_rgbd_render_data_with_color(depth_frame, warped_color_frame, sP, sC);
 				}
 				else
-					rgbd::construct_rgbd_render_data(depth_frame, sP);	
+					rgbd::construct_rgbd_render_data(depth_frame, sP);
 			}
+	}
 
-			// populate pointcloud
-			if (surfel) {
-				pcl.clear();
-				for (cgv::render::uvec3 point : sP) {
-					pcl.add_point(point_cloud_types::Pnt(point));
+	// see vr_rgbd
+	size_t construct_point_cloud()
+	{
+		intermediate_pcl.clear();
+		const unsigned short* depths = reinterpret_cast<const unsigned short*>(&depth_frame.frame_data.front());
+		const unsigned char* colors = reinterpret_cast<const unsigned char*>(&color_frame.frame_data.front());
+
+		rgbd_inp.map_color_to_depth(depth_frame, color_frame, warped_color_frame);
+		colors = reinterpret_cast<const unsigned char*>(&warped_color_frame.frame_data.front());
+
+		int i = 0;
+		for (int y = 0; y < depth_frame.height; ++y)
+			for (int x = 0; x < depth_frame.width; ++x) {
+				vec3 p;
+				if (rgbd_inp.map_depth_to_point(x, y, depths[i], &p[0])) {
+					// flipping y to make it the same direction as in pixel y coordinate
+					p = -p;
+					rgba8 c(colors[4 * i + 2], colors[4 * i + 1], colors[4 * i], 255);
+					vertex v;
+					// filter points without color for 32 bit formats
+					static const rgba8 filter_color = rgba8(0, 0, 0, 255);
+					if (!(c == filter_color)) {
+						v.color = c;
+						v.point = p;
+					}
+					intermediate_pcl.add_point(v.point);
+				}
+				++i;
+			}
+		return intermediate_pcl.get_nr_points();
+	}
+
+	void timer_event(double t, double dt)
+	{
+		if (rgbd_inp.is_started()) {
+			if (rgbd_inp.is_started()) {
+				bool new_frame;
+				bool found_frame = false;
+				bool depth_frame_changed = false;
+				bool color_frame_changed = false;
+				//TODO fill in this part
+				// populate pointcloud
+				/*if (surfel) {
+					intermediate_pcl.clear();
+					for (cgv::render::uvec3 point : sP) {
+						intermediate_pcl.add_point(point_cloud_types::Pnt(point));
+					}
+				}*/
+				
+			}
+		}
+
+		std::cout << "before future_handle" << std::endl;
+		// in case a point cloud is being constructed
+		if (future_handle.valid()) {
+			std::cout << "future_handle is valid" << std::endl;
+			// check for termination of thread
+			if (future_handle.wait_for(std::chrono::milliseconds(0)) == std::future_status::ready) {
+				size_t N = future_handle.get();
+				// copy computed point cloud
+				current_pcl = intermediate_pcl;
+				post_redraw();
+			}
+		}
+		if (rgbd_inp.is_started()) {
+			if (rgbd_inp.is_started()) {
+				bool new_frame;
+				bool found_frame = false;
+				bool depth_frame_changed = false;
+				bool color_frame_changed = false;
+				do {
+					new_frame = false;
+					bool new_color_frame_changed = rgbd_inp.get_frame(rgbd::IS_COLOR, color_frame, 0);
+					// TODO add ORB feature extraction and estimate camera pose
+					if (new_color_frame_changed) {
+						++nr_color_frames;
+						color_frame_changed = new_color_frame_changed;
+						new_frame = true;
+						update_member(&nr_color_frames);
+					}
+					bool new_depth_frame_changed = rgbd_inp.get_frame(rgbd::IS_DEPTH, depth_frame, 0);
+					if (new_depth_frame_changed) {
+						++nr_depth_frames;
+						depth_frame_changed = new_depth_frame_changed;
+						new_frame = true;
+						update_member(&nr_depth_frames);
+					}
+					if (new_frame)
+						found_frame = true;
+				} while (new_frame);
+				if (found_frame)
+					post_redraw();
+				if (color_frame.is_allocated() && depth_frame.is_allocated() &&
+					(color_frame_changed || depth_frame_changed)) {
+
+					if (!future_handle.valid()) {
+						color_frame; // color_frame2 = color_frame
+						depth_frame; // depth_frame2 = depth_frame
+						future_handle = std::async(&mirror3D::construct_point_cloud, this);
+					}
 				}
 			}
+		}
+
 	}
 
 	void draw(cgv::render::context& ctx)
@@ -288,25 +401,25 @@ public:
 		sr.set_render_style(source_srs);
 		if (surfel) {
 			ctx.push_modelview_matrix();
-			if (pcl.get_nr_points() > 0) {
-				int num_points = pcl.get_nr_points();
+			if (current_pcl.get_nr_points() > 0) {
+				int num_points = current_pcl.get_nr_points();
 				sr = ref_surfel_renderer(ctx);
-				sr.set_position_array(ctx, &pcl.pnt(0), num_points);
+				//sr.set_position_array(ctx, &pcl.pnt(0), num_points);
+				sr.set_position_array(ctx, &current_pcl.pnt(0), num_points);
 
 				// looks like there is already a function for normal creation
-				if (!pcl.has_normals()) {
-					pcl.create_normals();
-					for (int i = 0; i < pcl.get_nr_points(); ++i)
-						pcl.nml(i) = cgv::math::fvec<float, 3>(1, 0, 0);
+				if (!current_pcl.has_normals()) {
+					current_pcl.create_normals();
+					for (int i = 0; i < current_pcl.get_nr_points(); ++i)
+						current_pcl.nml(i) = cgv::math::fvec<float, 3>(1, 0, 0);
 				}
 
-				sr.set_normal_array(ctx, &pcl.nml(0), num_points);
+				sr.set_normal_array(ctx, &current_pcl.nml(0), num_points);
 
 				cgv::math::fvec<float, 4> point_color = vec4( 0.0, 0.0, 1.0, 0.8 );
 				std::vector<cgv::math::fvec<float, 4>> color(num_points, point_color);
 				sr.set_color_array(ctx, color);
 				sr.render(ctx, 0, num_points);
-				sr.draw(ctx, 0, pcl.get_nr_points());
 			}
 			ctx.pop_modelview_matrix();
 		}
