@@ -9,6 +9,7 @@ git clone --recurse-submodules https://github.com/FlorianMehnert/3dmirror.git
 - in Windows make sure AZURE_KINECT_SDK environment variable is set to the [azure kinect sdk directory](https://github.com/microsoft/Azure-Kinect-Sensor-SDK)
 - for 1.4.1 C:\Program Files\Azure Kinect SDK v1.4.1\sdk
 - add `%AZURE_KINECT_SDK%\windows-desktop\x86\release\bin` [to PATH](https://www.architectryan.com/2018/03/17/add-to-the-path-on-windows-10/)
+    - should this not work for your pc: add `%AZURE_KINECT_SDK%\windows-desktop\amd64\release\bin` instead to PATH (make sure this is not set multiple times)
 - camera not accessible for kinect viewer: allow desktop apps to access camera [(Start > Settings > Privacy & security > Camera)](https://support.microsoft.com/en-us/windows/manage-app-permissions-for-your-camera-in-windows-87ebc757-1f87-7bbf-84b5-0686afb6ca6b)
 
 ## build the mirror3D
