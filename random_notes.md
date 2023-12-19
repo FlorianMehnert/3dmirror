@@ -109,3 +109,8 @@ marching cubes:
 ### cgal mesh generation
 
 - https://doc.cgal.org/latest/Mesh_3/index.html
+
+## near goals
+- only glgs of the derived "point_renderer" is required $\rightarrow$ render quads instead of points (basically surfel renderer)
+- find out at which step the meshing has to take place - where is this done in other projects
+- store distance of points during the creation of the depth array and pass to the geometry shader or somewhere where it is needed
