@@ -94,7 +94,12 @@ protected:
 
 	// toggle via gui - construct pcl or use surfel renderer
 	bool surfel = false;
+	bool simple_cube = false;
 	float distance = 0;
+
+	// for simple cube
+	cgv::media::illum::surface_material material;
+	
 
 public:
 	mirror3D() : color_tex("uint8[R,G,B]"), depth_tex("uint16[R]")
