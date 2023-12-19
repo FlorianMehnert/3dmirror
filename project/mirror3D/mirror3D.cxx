@@ -430,6 +430,17 @@ public:
 			}
 			ctx.pop_modelview_matrix();
 		}
+		if (simple_cube) {
+			ctx.ref_surface_shader_program().enable(ctx);
+			ctx.set_material(material);
+			ctx.push_modelview_matrix();
+			ctx.set_color(rgb(0, 1, 0.2f));
+			ctx.tesselate_unit_cube();
+			ctx.push_modelview_matrix();
+			ctx.pop_modelview_matrix();
+			ctx.pop_modelview_matrix();
+			ctx.ref_surface_shader_program().disable(ctx);
+		}
 		glEnable(GL_CULL_FACE);
 	}
 };
