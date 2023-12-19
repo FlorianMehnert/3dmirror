@@ -187,7 +187,7 @@ public:
 	{
 		add_decorator("mirror3D", "heading", "level=1");
 		add_member_control(this, "debug_frame_timing", debug_frame_timing, "check");
-		add_member_control(this, "test_member", surfel, "check");
+		add_member_control(this, "surfel_render", surfel, "check");
 		if (begin_tree_node("capture", is_running)) {
 			align("\a");
 			create_gui_base(this, *this);
