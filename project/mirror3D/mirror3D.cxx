@@ -92,8 +92,10 @@ protected:
 	/// intermediate point cloud and to be rendered point cloud
 	//std::vector<vertex> intermediate_pc, current_pc;
 
-	// toggle via gui - construct pcl or use frames and render points
+	// toggle via gui - construct pcl or use surfel renderer
 	bool surfel = false;
+	float distance = 0;
+
 public:
 	mirror3D() : color_tex("uint8[R,G,B]"), depth_tex("uint16[R]")
 	{	
