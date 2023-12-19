@@ -21,6 +21,20 @@
 - holo raycast (in Examples) ist Startpunkt
 - im holo_raycast.cpp -> how to use shader
 
+### meeting 19.12.2023
+research on marching cubes and mesh from depth buffer
+new tasks:
+- add slider to filter points
+- triangle or rectangle as primitive and think about the data structure simple mesh or halfedge
+	- rgbd control only provides small hints about mesh construction
+- tianfang will send me something about mesh reconstruction
+	- marching cubes is already implemented - not the focus (but it is implemented using an estimation of the normals since the position of the camera is not known)
+- further research
+- focus is the implementation of mesh reconstruction from depth buffer:
+	- convert the depth image to 2.5D
+	- get position of camera
+	- add slider to filter out further away points
+
 ### längerfristige Hausaufgaben
 
 - scivis anschauen -> Path tracing: nachschauen in der sciview Vorlesung
