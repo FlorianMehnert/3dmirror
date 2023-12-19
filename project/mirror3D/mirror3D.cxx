@@ -77,8 +77,8 @@ protected:
 	rgbd::frame_type depth_frame;
 	rgbd::frame_type color_frame;
 
-	// shader
-	cgv::render::shader_program rgbd_prog;
+	// shader initializer
+	cgv::render::shader_program prog;
 
 	// texture, shaders and display lists
 	cgv::render::texture color;
