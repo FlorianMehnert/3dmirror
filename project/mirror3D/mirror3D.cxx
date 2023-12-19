@@ -37,6 +37,15 @@ struct vertex : public cgv::render::render_types
 	rgba8 color;
 };
 
+class rgbd_surfel_renderer :
+	public rgbd::rgbd_point_renderer
+{
+	bool build_shader_program(cgv::render::context& ctx, cgv::render::shader_program& prog, const cgv::render::shader_define_map& defines) override
+	{
+		return prog.build_program(ctx, "mirror3D.glpr", true, defines);
+	}
+};
+
 class mirror3D :
 	public rgbd::rgbd_starter<cgv::base::node>,
 	public cgv::render::drawable,
@@ -84,7 +93,8 @@ protected:
 	cgv::render::texture color;
 
 	// default point renderer
-	rgbd::rgbd_point_renderer pr;
+	//rgbd::rgbd_point_renderer pr;
+	rgbd_surfel_renderer pr;
 
 	// somthing for the timer event from vr_rgbd
 	std::future<size_t> future_handle;
@@ -95,10 +105,13 @@ protected:
 	// toggle via gui - construct pcl or use surfel renderer
 	bool surfel = false;
 	bool simple_cube = false;
+	bool shader_demo = false;
 	float distance = 0;
 
 	// for simple cube
 	cgv::media::illum::surface_material material;
+
+	
 	
 
 public:
@@ -117,6 +130,9 @@ public:
 		source_srs.blend_points = true;
 		source_srs.illumination_mode = cgv::render::IM_TWO_SIDED;
 		connect(cgv::gui::get_animation_trigger().shoot, this, &mirror3D::timer_event);
+
+		// for simple cube
+		material.set_diffuse_reflectance(rgb(0.7f, 0.2f, 0.4f));
 
 	}
 	void on_set(void* member_ptr)
@@ -195,6 +211,9 @@ public:
 		add_decorator("mirror3D", "heading", "level=1");
 		add_member_control(this, "debug_frame_timing", debug_frame_timing, "check");
 		add_member_control(this, "surfel_render", surfel, "check");
+		add_member_control(this, "simple_cube", simple_cube, "check");
+		add_member_control(this, "shader_demo", shader_demo, "check");
+		add_member_control(this, "distance", distance, "value_slider", "min=1;max=10");
 		if (begin_tree_node("capture", is_running)) {
 			align("\a");
 			create_gui_base(this, *this);
@@ -225,6 +244,19 @@ public:
 		ctx.set_bg_clr_idx(4);
 		cgv::render::ref_point_renderer(ctx, 1);
 		cgv::render::ref_surfel_renderer(ctx, 1);
+		
+		// add own shader code -> build glpr in the current folder
+		if (!prog.build_program(ctx, "mirror3D.glpr", true))
+			return false;
+
+		/*fbo.create(ctx, w, h);
+		fbo.attach(ctx, T[0], 0, 0);
+		fbo.attach(ctx, T[1], 0, 1);
+		fbo.attach(ctx, T[2], 0, 2);
+		if (!fbo.is_complete(ctx)) {
+			ctx.error("ping_pong fbo not complete");
+			return false;
+		}*/
 		return pr.init(ctx);
 	}
 	void clear(cgv::render::context& ctx)
@@ -250,7 +282,7 @@ public:
 
 			}
 
-			// at this point sP and sC are populated with point data
+			// sP and sC are populated with point data
 			if (!pr.do_geometry_less_rendering()) {
 				if (!pr.do_lookup_color()) {
 					rgbd_inp.map_color_to_depth(depth_frame, color_frame, warped_color_frame);
@@ -258,6 +290,10 @@ public:
 				}
 				else
 					rgbd::construct_rgbd_render_data(depth_frame, sP);
+			}
+			if (shader_demo) {
+				prog.enable(ctx);
+				prog.disable(ctx);
 			}
 	}
 
@@ -313,10 +349,8 @@ public:
 			}
 		}
 
-		std::cout << "before future_handle" << std::endl;
 		// in case a point cloud is being constructed
 		if (future_handle.valid()) {
-			std::cout << "future_handle is valid" << std::endl;
 			// check for termination of thread
 			if (future_handle.wait_for(std::chrono::milliseconds(0)) == std::future_status::ready) {
 				size_t N = future_handle.get();
@@ -440,6 +474,10 @@ public:
 			ctx.pop_modelview_matrix();
 			ctx.pop_modelview_matrix();
 			ctx.ref_surface_shader_program().disable(ctx);
+		}
+		if (shader_demo) {
+		/*	cgv::render::draw_impl(ctx, PT_POINTS, start, count, false, false, -1);
+			std*/
 		}
 		glEnable(GL_CULL_FACE);
 	}

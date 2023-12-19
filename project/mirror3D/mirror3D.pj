@@ -10,5 +10,5 @@ addProjectDeps=["cgv_utils", "cgv_type","cgv_data","cgv_base", "cgv_math", "cgv_
 				"cg_fltk", "cg_ext", "crg_holo_view", "crg_grid",
 				"rgbd_capture", "cmi_io", "rgbd_render", "rgbd_kinect_azure"];
 addSharedDefines=["MIRROR3D_EXPORTS"];
+addShaderPaths=[INPUT_DIR."/glsl"];
 addCommandLineArguments=['config:"'.INPUT_DIR.'/config.def"',after("SHADER_PATHS", "cg_fltk")];
-
