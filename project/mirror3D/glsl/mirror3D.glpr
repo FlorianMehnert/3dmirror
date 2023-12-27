@@ -1,10 +1,1 @@
-vertex_file:rgbd_pc.glvs
-vertex_file:camera.glsl
-vertex_file:rgbd.glsl
-geometry_file:mirror3D.glgs
-geometry_file:view.glsl
-geometry_file:splat.glsl
-fragment_file:fragment.glfs
-fragment_file:a_buffer_lib.glfs
-fragment_file:splat.glsl
-fragment_file:point.glfs
+compute_file:mirror3D.glcs

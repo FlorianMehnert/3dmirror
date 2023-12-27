@@ -105,7 +105,7 @@ protected:
 	// toggle via gui - construct pcl or use surfel renderer
 	bool surfel = false;
 	bool simple_cube = false;
-	bool shader_demo = false;
+	bool shader_demo = true;
 	float distance = 0;
 
 	// for simple cube
@@ -246,17 +246,15 @@ public:
 		cgv::render::ref_surfel_renderer(ctx, 1);
 		
 		// add own shader code -> build glpr in the current folder
-		if (!prog.build_program(ctx, "mirror3D.glpr", true))
+		if (!prog.build_program(ctx, "mirror3D.glpr", true)) {
+			std::cout << "mirror3D glpr does not build" << std::endl;
 			return false;
+		}
+		else {
+			std::cout << "sucessfully built mirror3D" << std::endl;
+		}
+			
 
-		/*fbo.create(ctx, w, h);
-		fbo.attach(ctx, T[0], 0, 0);
-		fbo.attach(ctx, T[1], 0, 1);
-		fbo.attach(ctx, T[2], 0, 2);
-		if (!fbo.is_complete(ctx)) {
-			ctx.error("ping_pong fbo not complete");
-			return false;
-		}*/
 		return pr.init(ctx);
 	}
 	void clear(cgv::render::context& ctx)
@@ -291,8 +289,19 @@ public:
 				else
 					rgbd::construct_rgbd_render_data(depth_frame, sP);
 			}
+
+			// enable, configure, run and disable program (see gradient_viewer.cxx in example plugins)
+			int w,h = 1;
 			if (shader_demo) {
 				prog.enable(ctx);
+				prog.set_uniform(ctx, "width", w);
+				prog.set_uniform(ctx, "height", (int)h);
+				uvec3 num_groups = uvec3(1, 2, 3);
+				glDispatchCompute(num_groups[0], num_groups[1], num_groups[2]);
+
+				// do something else
+
+				glMemoryBarrier(GL_SHADER_IMAGE_ACCESS_BARRIER_BIT);
 				prog.disable(ctx);
 			}
 	}
@@ -337,15 +346,6 @@ public:
 				bool found_frame = false;
 				bool depth_frame_changed = false;
 				bool color_frame_changed = false;
-				//TODO fill in this part
-				// populate pointcloud
-				/*if (surfel) {
-					intermediate_pcl.clear();
-					for (cgv::render::uvec3 point : sP) {
-						intermediate_pcl.add_point(point_cloud_types::Pnt(point));
-					}
-				}*/
-				
 			}
 		}
 
