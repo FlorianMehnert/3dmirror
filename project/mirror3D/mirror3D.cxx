@@ -99,6 +99,15 @@ protected:
 	// somthing for the timer event from vr_rgbd
 	std::future<size_t> future_handle;
 
+	// buffer to hold all vertices for the compute shader
+	GLuint input_buffer = 0;
+	GLuint points;
+	GLuint vertex_array;
+	uvec3 vres;
+
+	// shader shared buffer object creation
+	GLuint compute_buffer = 0;
+
 	/// intermediate point cloud and to be rendered point cloud
 	//std::vector<vertex> intermediate_pc, current_pc;
 
@@ -242,18 +251,22 @@ public:
 	{
 		start_first_device();
 		ctx.set_bg_clr_idx(4);
+		
+		// render points
 		cgv::render::ref_point_renderer(ctx, 1);
+		
+		// render surfels instead of normal points
 		cgv::render::ref_surfel_renderer(ctx, 1);
 		
+		// something with compute shaders
+		// cgv::render::ref_clod_point_renderer(ctx, 1);
+		
 		// add own shader code -> build glpr in the current folder
-		if (!prog.build_program(ctx, "mirror3D.glpr", true)) {
-			std::cout << "mirror3D glpr does not build" << std::endl;
-			return false;
-		}
-		else {
-			std::cout << "sucessfully built mirror3D" << std::endl;
-		}
-			
+		// https://www.khronos.org/opengl/wiki/Compute_Shader
+		setup_compute_shader(ctx);
+		
+		// create buffer object passed to compute shader later
+		create_storage_buffer();
 
 		return pr.init(ctx);
 	}
@@ -261,12 +274,61 @@ public:
 	{
 		cgv::render::ref_point_renderer(ctx, -1);
 		cgv::render::ref_surfel_renderer(ctx, -1);
+		cgv::render::ref_clod_point_renderer(ctx, -1);
+
 		pr.clear(ctx);
 		if (is_running) {
 			is_running = false;
 			on_set_base(&is_running, *this);
 		}
 	}
+
+	// prints errors in debug builds if shader code is wrong
+		void shaderCheckError(cgv::render::shader_program & prog, const char name[]) {
+		#ifndef NDEBUG
+		if (prog.last_error.size() > 0) {
+			std::cerr << "error in " << name << "\n" << prog.last_error << '\n';
+			prog.last_error = "";
+		}
+		#endif // #ifdef NDEBUG
+	}
+
+	void setup_compute_shader(cgv::render::context& ctx)
+	{
+		// enable, configure, run and disable program (see gradient_viewer.cxx in example plugins)
+		
+		// see cgv_gl clod_point_renderer
+		if (shader_demo) {
+			if (!prog.build_program(ctx, "mirror3D.glpr", true)) {
+				std::cerr << "ERROR in setup_compute_shader::init() ... could not build program" << std::endl;
+			}
+		}
+	}
+
+	void create_storage_buffer() {
+		glGenBuffers(1, &compute_buffer);
+		glBindBuffer(GL_SHADER_STORAGE_BUFFER, compute_buffer);
+		glBufferData(GL_SHADER_STORAGE_BUFFER, 1024, &vertex_array, GL_DYNAMIC_DRAW);
+		glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 0, compute_buffer); // is binding = 0 correct?
+		
+	}
+
+	void compute_mirror_stuff(cgv::render::context& ctx) {
+		
+		// dummy data see gradient_viewer.cxx
+		unsigned int w = 192;
+		unsigned int h = 128;
+		prog.enable(ctx);
+		shader_program* cmpt_ptr = &prog;
+		
+		cmpt_ptr->set_uniform(ctx, "width", w);
+		cmpt_ptr->set_uniform(ctx, "height", h);
+		glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 0, compute_buffer);
+		glDispatchCompute(16,16,1);
+		prog.disable(ctx);
+		std::cout << compute_buffer << std::endl;
+	}
+
 	void init_frame(cgv::render::context& ctx)
 	{
 			if (!view_ptr)
@@ -289,21 +351,7 @@ public:
 				else
 					rgbd::construct_rgbd_render_data(depth_frame, sP);
 			}
-
-			// enable, configure, run and disable program (see gradient_viewer.cxx in example plugins)
-			int w,h = 1;
-			if (shader_demo) {
-				prog.enable(ctx);
-				prog.set_uniform(ctx, "width", w);
-				prog.set_uniform(ctx, "height", (int)h);
-				uvec3 num_groups = uvec3(1, 2, 3);
-				glDispatchCompute(num_groups[0], num_groups[1], num_groups[2]);
-
-				// do something else
-
-				glMemoryBarrier(GL_SHADER_IMAGE_ACCESS_BARRIER_BIT);
-				prog.disable(ctx);
-			}
+			compute_mirror_stuff(ctx);
 	}
 
 	// see vr_rgbd
@@ -464,6 +512,10 @@ public:
 			}
 			ctx.pop_modelview_matrix();
 		}
+		if (shader_demo) {
+			vres = uvec3(16, 16, 1);
+
+		}
 		if (simple_cube) {
 			ctx.ref_surface_shader_program().enable(ctx);
 			ctx.set_material(material);
@@ -474,10 +526,6 @@ public:
 			ctx.pop_modelview_matrix();
 			ctx.pop_modelview_matrix();
 			ctx.ref_surface_shader_program().disable(ctx);
-		}
-		if (shader_demo) {
-		/*	cgv::render::draw_impl(ctx, PT_POINTS, start, count, false, false, -1);
-			std*/
 		}
 		glEnable(GL_CULL_FACE);
 	}
