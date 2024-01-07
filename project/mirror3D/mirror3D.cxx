@@ -93,13 +93,22 @@ protected:
 	cgv::render::texture color;
 
 	// default point renderer
-	//rgbd::rgbd_point_renderer pr;
-	rgbd_surfel_renderer pr;
+	rgbd::rgbd_point_renderer pr;
+	//rgbd_surfel_renderer pr;
 
 	// somthing for the timer event from vr_rgbd
 	std::future<size_t> future_handle;
 
-	/// intermediate point cloud and to be rendered point cloud
+	// buffer to hold all vertices for the compute shader
+	GLuint input_buffer = 0;
+	GLuint points;
+	GLuint vertex_array;
+	uvec3 vres;
+
+	// shader shared buffer object creation
+	GLuint compute_buffer = 0;
+
+	// intermediate point cloud and to be rendered point cloud
 	//std::vector<vertex> intermediate_pc, current_pc;
 
 	// toggle via gui - construct pcl or use surfel renderer
@@ -244,19 +253,14 @@ public:
 		ctx.set_bg_clr_idx(4);
 		cgv::render::ref_point_renderer(ctx, 1);
 		cgv::render::ref_surfel_renderer(ctx, 1);
-		
-		// add own shader code -> build glpr in the current folder
-		if (!prog.build_program(ctx, "mirror3D.glpr", true))
-			return false;
 
-		/*fbo.create(ctx, w, h);
-		fbo.attach(ctx, T[0], 0, 0);
-		fbo.attach(ctx, T[1], 0, 1);
-		fbo.attach(ctx, T[2], 0, 2);
-		if (!fbo.is_complete(ctx)) {
-			ctx.error("ping_pong fbo not complete");
-			return false;
-		}*/
+		// add own shader code -> build glpr in the current folder
+		// https://www.khronos.org/opengl/wiki/Compute_Shader
+		setup_compute_shader(ctx);
+
+		// create buffer object passed to compute shader later
+		create_storage_buffer();
+
 		return pr.init(ctx);
 	}
 	void clear(cgv::render::context& ctx)
@@ -269,6 +273,41 @@ public:
 			on_set_base(&is_running, *this);
 		}
 	}
+
+	void setup_compute_shader(cgv::render::context& ctx)
+	{
+		// enable, configure, run and disable program (see gradient_viewer.cxx in example plugins)
+
+		// see cgv_gl clod_point_renderer
+		if (!prog.build_program(ctx, "mirror3D.glpr", true)) {
+			std::cerr << "ERROR in setup_compute_shader::init() ... could not build program" << std::endl;
+		}
+	}
+
+	void create_storage_buffer() {
+		glGenBuffers(1, &compute_buffer);
+		glBindBuffer(GL_SHADER_STORAGE_BUFFER, compute_buffer);
+		glBufferData(GL_SHADER_STORAGE_BUFFER, 1024, &vertex_array, GL_DYNAMIC_DRAW);
+		glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 0, compute_buffer); // is binding = 0 correct?
+
+	}
+
+	void compute_mirror_stuff(cgv::render::context& ctx) {
+
+		// dummy data see gradient_viewer.cxx
+		unsigned int w = 192;
+		unsigned int h = 128;
+		prog.enable(ctx);
+		shader_program* cmpt_ptr = &prog;
+
+		cmpt_ptr->set_uniform(ctx, "width", w);
+		cmpt_ptr->set_uniform(ctx, "height", h);
+		glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 0, compute_buffer);
+		glDispatchCompute(16, 16, 1);
+		prog.disable(ctx);
+		std::cout << compute_buffer << std::endl;
+	}
+
 	void init_frame(cgv::render::context& ctx)
 	{
 			if (!view_ptr)
@@ -291,10 +330,7 @@ public:
 				else
 					rgbd::construct_rgbd_render_data(depth_frame, sP);
 			}
-			if (shader_demo) {
-				prog.enable(ctx);
-				prog.disable(ctx);
-			}
+			compute_mirror_stuff(ctx);
 	}
 
 	// see vr_rgbd
@@ -337,15 +373,6 @@ public:
 				bool found_frame = false;
 				bool depth_frame_changed = false;
 				bool color_frame_changed = false;
-				//TODO fill in this part
-				// populate pointcloud
-				/*if (surfel) {
-					intermediate_pcl.clear();
-					for (cgv::render::uvec3 point : sP) {
-						intermediate_pcl.add_point(point_cloud_types::Pnt(point));
-					}
-				}*/
-				
 			}
 		}
 

@@ -1,0 +1,53 @@
+#version 430
+
+// a point data structure
+struct Vertex {
+    vec3 position; //this can be x, y from color image, z from depth image
+    float color;
+};
+
+// defines required work group size?
+layout(local_size_x = 16, local_size_y = 16, local_size_z = 1) in;
+
+//create buffer for vertices
+layout(std430, binding = 0) buffer VertexBuffer {
+    Vertex vertices[];
+};
+
+// Assuming a width and height of the grid
+int width;
+int height;
+
+// Helper function to fetch or compute a vertex
+Vertex getVertex(uint index) {
+    //Fetch or compute the position and color of the vertex
+    vec3 position = vec3(1,1,1); // Based on your input data
+    float color = 3;   // Based on your input data
+    return Vertex(position, color);
+}
+
+void main() {
+    uint idx = gl_GlobalInvocationID.x;
+
+    if (idx >= (width - 1) * (height - 1)) {
+        return; // Skip computation for edge threads
+    }
+
+    // Calculate indices of the quad corners
+    uint topLeft = idx;
+    uint topRight = topLeft + 1;
+    uint bottomLeft = topLeft + width;
+    uint bottomRight = bottomLeft + 1;
+
+    // Now generate vertices for two triangles
+
+    // Triangle 1
+    vertices[6 * idx + 0] = getVertex(topLeft);     // Fetch or compute vertex
+    vertices[6 * idx + 1] = getVertex(bottomLeft);
+    vertices[6 * idx + 2] = getVertex(topRight);
+
+    // Triangle 2
+    vertices[6 * idx + 3] = getVertex(topRight);
+    vertices[6 * idx + 4] = getVertex(bottomLeft);
+    vertices[6 * idx + 5] = getVertex(bottomRight);
+}
