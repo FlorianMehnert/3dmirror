@@ -307,43 +307,6 @@ public:
 	void setup_compute_shader(cgv::render::context& ctx)
 	{
 		// enable, configure, run and disable program (see gradient_viewer.cxx in example plugins)
-		
-		// see cgv_gl clod_point_renderer
-		if (shader_demo) {
-			if (!prog.build_program(ctx, "mirror3D.glpr", true)) {
-				std::cerr << "ERROR in setup_compute_shader::init() ... could not build program" << std::endl;
-			}
-		}
-	}
-
-	void create_storage_buffer() {
-		glGenBuffers(1, &compute_buffer);
-		glBindBuffer(GL_SHADER_STORAGE_BUFFER, compute_buffer);
-		glBufferData(GL_SHADER_STORAGE_BUFFER, 1024, &vertex_array, GL_DYNAMIC_DRAW);
-		glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 0, compute_buffer); // is binding = 0 correct?
-		
-	}
-
-	void compute_mirror_stuff(cgv::render::context& ctx) {
-		
-		// dummy data see gradient_viewer.cxx
-		unsigned int w = 192;
-		unsigned int h = 128;
-		prog.enable(ctx);
-		shader_program* cmpt_ptr = &prog;
-		
-		cmpt_ptr->set_uniform(ctx, "width", w);
-		cmpt_ptr->set_uniform(ctx, "height", h);
-		glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 0, compute_buffer);
-		glDispatchCompute(16,16,1);
-		prog.disable(ctx);
-		std::cout << compute_buffer << std::endl;
-	}
-
-
-	void setup_compute_shader(cgv::render::context& ctx)
-	{
-		// enable, configure, run and disable program (see gradient_viewer.cxx in example plugins)
 
 		// see cgv_gl clod_point_renderer
 		if (!prog.build_program(ctx, "mirror3D.glpr", true)) {
