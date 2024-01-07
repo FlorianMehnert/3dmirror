@@ -108,15 +108,6 @@ protected:
 	// shader shared buffer object creation
 	GLuint compute_buffer = 0;
 
-	// buffer to hold all vertices for the compute shader
-	GLuint input_buffer = 0;
-	GLuint points;
-	GLuint vertex_array;
-	uvec3 vres;
-
-	// shader shared buffer object creation
-	GLuint compute_buffer = 0;
-
 	// intermediate point cloud and to be rendered point cloud
 	//std::vector<vertex> intermediate_pc, current_pc;
 
@@ -285,7 +276,6 @@ public:
 	{
 		cgv::render::ref_point_renderer(ctx, -1);
 		cgv::render::ref_surfel_renderer(ctx, -1);
-		cgv::render::ref_clod_point_renderer(ctx, -1);
 
 		pr.clear(ctx);
 		if (is_running) {
@@ -335,7 +325,7 @@ public:
 		glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 0, compute_buffer);
 		glDispatchCompute(16, 16, 1);
 		prog.disable(ctx);
-		std::cout << compute_buffer << std::endl;
+		//std::cout << compute_buffer << std::endl;
 	}
 
 	void init_frame(cgv::render::context& ctx)
