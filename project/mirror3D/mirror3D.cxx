@@ -304,8 +304,8 @@ public:
 	void create_storage_buffer(size_t size) {
 		// TODO: delete Buffer
 		glGenBuffers(1, &buffer_id);
-		glBindBuffer(GL_SHADER_STORAGE_BUFFER, buffer_id);
-		glBufferData(GL_SHADER_STORAGE_BUFFER, size, &vertex_array, GL_DYNAMIC_DRAW);
+		glBindBuffer(GL_ARRAY_BUFFER, buffer_id);
+		glBufferData(GL_ARRAY_BUFFER, size, &vertex_array, GL_DYNAMIC_DRAW);
 		//glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 1, buffer_id);
 	}
 
@@ -343,11 +343,11 @@ public:
 		cmpt_ptr->set_uniform(ctx, "width", w);
 		cmpt_ptr->set_uniform(ctx, "height", h);
 		// frame_to_buffer();
-		glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 1, buffer_id); // www.khronos.org/opengl/wiki/Buffer_Object
+		glBindBufferBase(GL_ARRAY_BUFFER, 1, buffer_id); // www.khronos.org/opengl/wiki/Buffer_Object
 		glDispatchCompute(16, 16, 1);
 		
 		// wait for the compute shader to finish
-		glMemoryBarrier(GL_SHADER_STORAGE_BARRIER_BIT);
+		//glMemoryBarrier(GL_SHADER_STORAGE_BARRIER_BIT);
 		
 		prog.disable(ctx);
 		//std::cout << compute_buffer << std::endl;
