@@ -102,14 +102,11 @@ protected:
 	// buffer to hold all vertices for the compute shader
 	GLuint input_buffer = 0;
 	GLuint points;
-	GLuint vertex_array;
+	vec3 vertex_array[262144]; // 512 x 512
 	uvec3 vres;
 
 	// shader shared buffer object creation
-	GLuint compute_buffer = 0;
-
-	// intermediate point cloud and to be rendered point cloud
-	//std::vector<vertex> intermediate_pc, current_pc;
+	GLuint buffer_id = 0;
 
 	// toggle via gui - construct pcl or use surfel renderer
 	bool surfel = false;
@@ -119,9 +116,6 @@ protected:
 
 	// for simple cube
 	cgv::media::illum::surface_material material;
-
-	
-	
 
 public:
 	mirror3D() : color_tex("uint8[R,G,B]"), depth_tex("uint16[R]")
@@ -267,8 +261,10 @@ public:
 		// https://www.khronos.org/opengl/wiki/Compute_Shader
 		setup_compute_shader(ctx);
 		
-		// create buffer object passed to compute shader later
-		create_storage_buffer();
+		// create buffer object passed to compute shader later (depth frame is 512x512)
+		int size = 512*512*3*sizeof(GLuint);//sizeof(float);// +sizeof(GLuint);
+		std::cout << size << std::endl;
+		create_storage_buffer(1024);
 
 		return pr.init(ctx);
 	}
@@ -282,6 +278,7 @@ public:
 			is_running = false;
 			on_set_base(&is_running, *this);
 		}
+		//glDeleteBuffers(1, &buffer_id);
 	}
 
 	// prints errors in debug builds if shader code is wrong
@@ -304,15 +301,38 @@ public:
 		}
 	}
 
-	void create_storage_buffer() {
-		glGenBuffers(1, &compute_buffer);
-		glBindBuffer(GL_SHADER_STORAGE_BUFFER, compute_buffer);
-		glBufferData(GL_SHADER_STORAGE_BUFFER, 1024, &vertex_array, GL_DYNAMIC_DRAW);
-		glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 0, compute_buffer); // is binding = 0 correct?
-
+	void create_storage_buffer(size_t size) {
+		// TODO: delete Buffer
+		glGenBuffers(1, &buffer_id);
+		glBindBuffer(GL_SHADER_STORAGE_BUFFER, buffer_id);
+		glBufferData(GL_SHADER_STORAGE_BUFFER, size, &vertex_array, GL_DYNAMIC_DRAW);
+		//glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 1, buffer_id);
 	}
 
-	void compute_mirror_stuff(cgv::render::context& ctx) {
+	void frame_to_buffer() {
+		std::memset(vertex_array, 0, sizeof(vertex_array)); // set all to 0
+		if (!depth_frame.frame_data.empty()) {
+			const unsigned short* depths = reinterpret_cast<const unsigned short*>(&depth_frame.frame_data.front());
+			int i = 0;
+
+			for (int y = 0; y < depth_frame.height; ++y) {
+				for (int x = 0; x < depth_frame.width; ++x) {
+					vec3 p;
+					if (rgbd_inp.map_depth_to_point(x, y, depths[i], &p[0])) {
+						vertex_array[i] = depths[i];
+					}
+					++i;
+				}
+			}
+			// depth frame size is 512 x 512 x 2
+			std::cout << "depth_frame height: " << depth_frame.height << std::endl;
+		}
+		else {
+			std::cout << "no frame data" << std::endl;
+		}
+	}
+
+	void talk_to_compute_shader(cgv::render::context& ctx) {
 
 		// dummy data see gradient_viewer.cxx
 		unsigned int w = 192;
@@ -322,8 +342,13 @@ public:
 
 		cmpt_ptr->set_uniform(ctx, "width", w);
 		cmpt_ptr->set_uniform(ctx, "height", h);
-		glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 0, compute_buffer);
+		// frame_to_buffer();
+		glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 1, buffer_id); // www.khronos.org/opengl/wiki/Buffer_Object
 		glDispatchCompute(16, 16, 1);
+		
+		// wait for the compute shader to finish
+		glMemoryBarrier(GL_SHADER_STORAGE_BARRIER_BIT);
+		
 		prog.disable(ctx);
 		//std::cout << compute_buffer << std::endl;
 	}
@@ -338,7 +363,6 @@ public:
 			}
 			if (depth_frame_changed) {
 				create_or_update_texture_from_frame(ctx, depth_tex, depth_frame);
-
 			}
 
 			// sP and sC are populated with point data
@@ -349,8 +373,9 @@ public:
 				}
 				else
 					rgbd::construct_rgbd_render_data(depth_frame, sP);
+				//frame_to_buffer();
 			}
-			compute_mirror_stuff(ctx);
+			//talk_to_compute_shader(ctx);
 	}
 
 	// see vr_rgbd
