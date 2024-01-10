@@ -114,6 +114,7 @@ protected:
 	bool shader_demo = true;
 	bool construct_quads = false;
 	float distance = 0;
+	bool do_distance_cull = false;
 
 	// for simple cube
 	cgv::media::illum::surface_material material;
@@ -123,7 +124,7 @@ public:
 	{	
 		set_name("mirror3D");
 		pr.set_distortion_map_usage(true);
-		pr.set_geometry_less_rendering(false);
+		pr.set_geometry_less_rendering(true);
 		prs.point_size = 5;
 		prs.blend_width_in_pixel = 0;
 		
@@ -214,11 +215,12 @@ public:
 	{
 		add_decorator("mirror3D", "heading", "level=1");
 		add_member_control(this, "debug_frame_timing", debug_frame_timing, "check");
-		add_member_control(this, "surfel_render", surfel, "check");
-		add_member_control(this, "simple_cube", simple_cube, "check");
-		add_member_control(this, "shader_demo", shader_demo, "check");
-		add_member_control(this, "distance", distance, "value_slider", "min=1;max=10");
-		add_member_control(this, "construct_quads", construct_quads, "check");
+		add_member_control(this, "surfel render", surfel, "check");
+		add_member_control(this, "simple cube", simple_cube, "check");
+		add_member_control(this, "shader demo", shader_demo, "check");
+		add_member_control(this, "distance", distance, "value_slider", "min=0;max=10");
+		add_member_control(this, "construct quads", construct_quads, "check");
+		add_member_control(this, "do distance cull", do_distance_cull, "check");
 		if (begin_tree_node("capture", is_running)) {
 			align("\a");
 			create_gui_base(this, *this);
@@ -503,7 +505,8 @@ public:
 				pr.ref_prog().set_uniform(ctx, "depth_image", 0);
 			pr.ref_prog().set_uniform(ctx, "color_image", 1);
 			pr.ref_prog().set_uniform(ctx, "max_distance", distance);
-			pr.ref_prog().set_uniform(ctx, "construct_quads", distance);
+			pr.ref_prog().set_uniform(ctx, "construct_quads", construct_quads);
+			pr.ref_prog().set_uniform(ctx, "do_distance_cull", do_distance_cull);
 			if (!surfel) {
 				pr.draw(ctx, 0, sP.size());
 			}
