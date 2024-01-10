@@ -112,6 +112,7 @@ protected:
 	bool surfel = false;
 	bool simple_cube = false;
 	bool shader_demo = true;
+	bool construct_quads = false;
 	float distance = 0;
 
 	// for simple cube
@@ -217,6 +218,7 @@ public:
 		add_member_control(this, "simple_cube", simple_cube, "check");
 		add_member_control(this, "shader_demo", shader_demo, "check");
 		add_member_control(this, "distance", distance, "value_slider", "min=1;max=10");
+		add_member_control(this, "construct_quads", construct_quads, "check");
 		if (begin_tree_node("capture", is_running)) {
 			align("\a");
 			create_gui_base(this, *this);
@@ -501,6 +503,7 @@ public:
 				pr.ref_prog().set_uniform(ctx, "depth_image", 0);
 			pr.ref_prog().set_uniform(ctx, "color_image", 1);
 			pr.ref_prog().set_uniform(ctx, "max_distance", distance);
+			pr.ref_prog().set_uniform(ctx, "construct_quads", distance);
 			if (!surfel) {
 				pr.draw(ctx, 0, sP.size());
 			}

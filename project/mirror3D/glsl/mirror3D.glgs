@@ -11,6 +11,9 @@ uniform float reference_point_size = 1.0;
 uniform float viewport_height = 1080.0;
 uniform float blend_width_in_pixel = 1.0;
 uniform float max_distance = 10;
+uniform bool construct_quads = false;
+
+in vec3 adjacentPositions[4]; // Input from the vertex shader
 
 in POINT_GS {
 	vec4 color;
@@ -93,10 +96,23 @@ void main()
 	dy_eye *= splat_radius;
 	// generate splat vertices
 	// alternatively: gl_in[0].gl_Position).xyz > center_eye.z
+	// construct quad from 
 	if (max_distance > center_eye.z){
-	emit_corner(center_eye + dx_eye - dy_eye,  go.percentual_splat_size, -go.percentual_splat_size);
-	emit_corner(center_eye + dx_eye + dy_eye,  go.percentual_splat_size,  go.percentual_splat_size);
-	emit_corner(center_eye - dx_eye - dy_eye, -go.percentual_splat_size, -go.percentual_splat_size);
-	emit_corner(center_eye - dx_eye + dy_eye, -go.percentual_splat_size,  go.percentual_splat_size);
+		// actually create two triangles from the 4 points
+		if (construct_quads){
+			// since triangle strip it should create two triangles -> TODO: check if get_projection_matrix() is needed since this might turn the whole quad to view to the direction of the viewer
+			// TODO: implement multiple construction cases?
+			// TODO: discard if one point is way off
+			emit_corner(adjacentPositions[0],   go.percentual_splat_size, -go.percentual_splat_size);
+		  	emit_corner(adjacentPositions[1], go.percentual_splat_size,  go.percentual_splat_size);
+ 			emit_corner(adjacentPositions[3], -go.percentual_splat_size, -go.percentual_splat_size);
+ 			emit_corner(adjacentPositions[2], -go.percentual_splat_size,  go.percentual_splat_size);
+		}else {
+			emit_corner(center_eye + dx_eye - dy_eye,  go.percentual_splat_size, -go.percentual_splat_size);
+			emit_corner(center_eye + dx_eye + dy_eye,  go.percentual_splat_size,  go.percentual_splat_size);
+			emit_corner(center_eye - dx_eye - dy_eye, -go.percentual_splat_size, -go.percentual_splat_size);
+			emit_corner(center_eye - dx_eye + dy_eye, -go.percentual_splat_size,  go.percentual_splat_size);
+		}
+		EndPrimitive();
 	}
 }
