@@ -373,7 +373,8 @@ public:
 				}
 				else
 					rgbd::construct_rgbd_render_data(depth_frame, sP);
-				//frame_to_buffer();
+					// alternatively use own construct function (without pushback)
+
 			}
 			//talk_to_compute_shader(ctx);
 	}
@@ -499,9 +500,11 @@ public:
 			if (pr.do_geometry_less_rendering())
 				pr.ref_prog().set_uniform(ctx, "depth_image", 0);
 			pr.ref_prog().set_uniform(ctx, "color_image", 1);
+			pr.ref_prog().set_uniform(ctx, "max_distance", distance);
 			if (!surfel) {
 				pr.draw(ctx, 0, sP.size());
 			}
+			
 			pr.disable(ctx);
 			if (pr.do_lookup_color())
 				color_tex.disable(ctx);

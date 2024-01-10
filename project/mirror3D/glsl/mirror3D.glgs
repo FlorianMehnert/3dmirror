@@ -1,5 +1,7 @@
 #version 330 core
 
+// *** slightly altered point.glgs from cgv/libs/cgv_gl ***
+
 layout(points) in;
 layout(triangle_strip, max_vertices = 4) out;
 
@@ -8,6 +10,7 @@ uniform bool screen_aligned = true;
 uniform float reference_point_size = 1.0;
 uniform float viewport_height = 1080.0;
 uniform float blend_width_in_pixel = 1.0;
+uniform float max_distance = 10;
 
 in POINT_GS {
 	vec4 color;
@@ -86,11 +89,14 @@ void main()
 	// compute radius of splat
 	float splat_radius = reference_point_radius * go.percentual_splat_size;
 	// scale by splat radius
-	dx_eye *= splat_radius*2;
+	dx_eye *= splat_radius;
 	dy_eye *= splat_radius;
 	// generate splat vertices
+	// alternatively: gl_in[0].gl_Position).xyz > center_eye.z
+	if (max_distance > center_eye.z){
 	emit_corner(center_eye + dx_eye - dy_eye,  go.percentual_splat_size, -go.percentual_splat_size);
 	emit_corner(center_eye + dx_eye + dy_eye,  go.percentual_splat_size,  go.percentual_splat_size);
 	emit_corner(center_eye - dx_eye - dy_eye, -go.percentual_splat_size, -go.percentual_splat_size);
 	emit_corner(center_eye - dx_eye + dy_eye, -go.percentual_splat_size,  go.percentual_splat_size);
+	}
 }
