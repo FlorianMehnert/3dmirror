@@ -181,6 +181,7 @@ public:
 			std::cout << "(" << (depth_frame.device_time_stamp - dev_ts) * 1e-6 << ")";
 			dev_ts = depth_frame.device_time_stamp;
 			std::cout << " -> " << (depth_frame.device_time_stamp - color_frame.device_time_stamp) * 1e-6;
+			std::cout << "depth frame "
 			std::cout << std::endl;
 		}
 		
@@ -376,9 +377,8 @@ public:
 					rgbd::construct_rgbd_render_data_with_color(depth_frame, warped_color_frame, sP, sC);
 				}
 				else
+					// TODO: use own function to avoid pushback : alternatively use own construct function (without pushback)
 					rgbd::construct_rgbd_render_data(depth_frame, sP);
-					// alternatively use own construct function (without pushback)
-
 			}
 			//talk_to_compute_shader(ctx);
 	}

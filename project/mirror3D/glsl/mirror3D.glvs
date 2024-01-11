@@ -20,6 +20,11 @@ uniform float halo_width_in_pixel = 0.0;
 uniform float percentual_halo_width = 0.0;
 uniform bool discard_invalid_color_points = true;
 uniform vec4 invalid_color = vec4(1.0,0.0,1.0,1.0);
+// I pass a position to here -> x and y are both in pixel coordinates ranging from 0 to 511?
+// depth should need to be looked up using dedicated functions 
+// something like this:
+// depth_frame.frame_data[(y * get_depth_width() + position.x) * depth_frame.get_nr_bytes_per_pixel()]
+uniform sampler2d 
 
 in ivec3 position;
 in vec4 color;
