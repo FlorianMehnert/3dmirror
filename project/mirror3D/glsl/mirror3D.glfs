@@ -1,13 +1,49 @@
 #version 150
 
+uniform float halo_color_strength = 1.0;
+uniform bool render_quads = false;
+
+// *** adapted point.glfs ***
+
+in POINT_FS {
+	vec2 uv;
+	vec4 color;
+	vec4 halo_color;
+	float percentual_blend_width;
+	float percentual_core_size;
+	float percentual_point_size;
+	float percentual_splat_size;
+	float depth_offset;
+} fi;
+
 //***** begin interface of fragment.glfs ***********************************
 uniform float gamma = 2.2;
 void finish_fragment(vec4 color);
+void finish_fragment(vec4 color, float depth);
 //***** end interface of fragment.glfs ***********************************
 
-in vec4 color_fs;
+
+//***** begin interface of splat.glsl ***********************************
+vec4 compute_blended_color_with_halo(
+	in float percentual_radial_position,
+	in vec4 core_color, in float percentual_core_size,
+	in vec4 halo_color, in float percentual_point_size,
+	in float percentual_blend_width);
+//***** end interface of surface.glsl ***********************************
 
 void main()
 {
-	finish_fragment(color_fs);
+	if (!render_quads){
+	float percentual_radial_position = length(fi.uv);
+	if (percentual_radial_position > fi.percentual_splat_size)
+		discard;
+
+	finish_fragment(compute_blended_color_with_halo(
+		percentual_radial_position, fi.color, fi.percentual_core_size,
+		vec4(mix(fi.color.rgb, fi.halo_color.rgb,halo_color_strength), fi.halo_color.a), fi.percentual_point_size, fi.percentual_blend_width
+	), gl_FragCoord.z+fi.depth_offset);
+	}
+	else{
+		finish_fragment(fi.color, gl_FragCoord.z+ fi.depth_offset);
+	}
 }

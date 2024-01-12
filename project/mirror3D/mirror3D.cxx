@@ -37,13 +37,14 @@ struct vertex : public cgv::render::render_types
 	rgba8 color;
 };
 
-class rgbd_surfel_renderer :
+struct PointIndexBuffer {
+	int i, j;
+};
+
+class rgbd_mesh_renderer :
 	public rgbd::rgbd_point_renderer
 {
-	bool build_shader_program(cgv::render::context& ctx, cgv::render::shader_program& prog, const cgv::render::shader_define_map& defines) override
-	{
-		return prog.build_program(ctx, "mirror3D.glpr", true, defines);
-	}
+	
 };
 
 class mirror3D :
@@ -72,10 +73,6 @@ protected:
 
 	cgv::render::view* view_ptr = 0;
 
-	// point cloud data
-	std::vector<vec3> P, P2;
-	std::vector<rgb8> C, C2;
-
 	// init intermediate pointcloud
 	point_cloud &intermediate_pcl = point_cloud();
 	
@@ -94,7 +91,7 @@ protected:
 
 	// default point renderer
 	rgbd::rgbd_point_renderer pr;
-	//rgbd_surfel_renderer pr;
+	//rgbd_mesh_renderer pr;
 
 	// somthing for the timer event from vr_rgbd
 	std::future<size_t> future_handle;
@@ -105,6 +102,12 @@ protected:
 	vec3 vertex_array[262144]; // 512 x 512
 	uvec3 vres;
 
+	// index buffer
+	PointIndexBuffer PIB[262144];
+
+	// element buffer object
+	GLuint ebo;
+
 	// shader shared buffer object creation
 	GLuint buffer_id = 0;
 
@@ -112,9 +115,10 @@ protected:
 	bool surfel = false;
 	bool simple_cube = false;
 	bool shader_demo = true;
-	bool construct_quads = false;
-	float distance = 0;
-	bool do_distance_cull = false;
+	bool construct_quads = true;
+	float distance = 5.0;
+	bool render_quads = true;
+	bool depth_lookup = false;
 
 	// for simple cube
 	cgv::media::illum::surface_material material;
@@ -181,7 +185,7 @@ public:
 			std::cout << "(" << (depth_frame.device_time_stamp - dev_ts) * 1e-6 << ")";
 			dev_ts = depth_frame.device_time_stamp;
 			std::cout << " -> " << (depth_frame.device_time_stamp - color_frame.device_time_stamp) * 1e-6;
-			std::cout << "depth frame "
+			std::cout << "depth frame ";
 			std::cout << std::endl;
 		}
 		
@@ -219,9 +223,9 @@ public:
 		add_member_control(this, "surfel render", surfel, "check");
 		add_member_control(this, "simple cube", simple_cube, "check");
 		add_member_control(this, "shader demo", shader_demo, "check");
-		add_member_control(this, "distance", distance, "value_slider", "min=0;max=10");
+		add_member_control(this, "distance", distance, "value_slider", "min=0;max=5");
 		add_member_control(this, "construct quads", construct_quads, "check");
-		add_member_control(this, "do distance cull", do_distance_cull, "check");
+		add_member_control(this, "render quads", render_quads, "check");
 		if (begin_tree_node("capture", is_running)) {
 			align("\a");
 			create_gui_base(this, *this);
@@ -501,12 +505,12 @@ public:
 			depth_tex.enable(ctx, 0);
 			if (pr.do_lookup_color())
 				color_tex.enable(ctx, 1);
-			if (pr.do_geometry_less_rendering())
-				pr.ref_prog().set_uniform(ctx, "depth_image", 0);
+			if (pr.do_geometry_less_rendering());
+			pr.ref_prog().set_uniform(ctx, "depth_image", 0);
 			pr.ref_prog().set_uniform(ctx, "color_image", 1);
 			pr.ref_prog().set_uniform(ctx, "max_distance", distance);
 			pr.ref_prog().set_uniform(ctx, "construct_quads", construct_quads);
-			pr.ref_prog().set_uniform(ctx, "do_distance_cull", do_distance_cull);
+			pr.ref_prog().set_uniform(ctx, "render_quads", render_quads);
 			if (!surfel) {
 				pr.draw(ctx, 0, sP.size());
 			}
@@ -516,7 +520,7 @@ public:
 				color_tex.disable(ctx);
 			if (pr.do_geometry_less_rendering())
 				depth_tex.disable(ctx);
-		}
+			}
 		
 		// draw surfels
 		cgv::render::surfel_renderer& sr = ref_surfel_renderer(ctx);
@@ -547,7 +551,6 @@ public:
 		}
 		if (shader_demo) {
 			vres = uvec3(16, 16, 1);
-
 		}
 		if (simple_cube) {
 			ctx.ref_surface_shader_program().enable(ctx);

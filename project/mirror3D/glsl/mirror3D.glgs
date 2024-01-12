@@ -12,7 +12,7 @@ uniform float viewport_height = 1080.0;
 uniform float blend_width_in_pixel = 1.0;
 uniform float max_distance = 10.0;
 uniform bool construct_quads = false;
-uniform bool do_distance_cull = true;
+uniform bool render_quads = true;
 
 in POINT_GS {
 	vec4 color;
@@ -96,7 +96,6 @@ void main()
 	dy_eye *= splat_radius;
 	// generate splat vertices
 	// alternatively: gl_in[0].gl_Position).xyz > center_eye.z
-	// construct quad from 
 	//if (do_distance_cull){
 		if (max_distance > gl_in[0].gl_Position.z){
 			// actually create two triangles from the 4 points
@@ -104,7 +103,7 @@ void main()
 				// since triangle strip it should create two triangles -> TODO: check if get_projection_matrix() is needed since this might turn the whole quad to view to the direction of the viewer
 				// TODO: implement multiple construction cases?
 				// TODO: discard if one point is way off
-				emit_corner((get_modelview_matrix()*gi[0].adjacentPositions[0]).xyz, go.percentual_splat_size, -go.percentual_splat_size);
+				emit_corner((get_modelview_matrix()*gl_in[0].gl_Position).xyz, go.percentual_splat_size, -go.percentual_splat_size);
 		  		emit_corner((get_modelview_matrix()*gi[0].adjacentPositions[1]).xyz, go.percentual_splat_size,  go.percentual_splat_size);
  				emit_corner((get_modelview_matrix()*gi[0].adjacentPositions[3]).xyz, -go.percentual_splat_size, -go.percentual_splat_size);
  				emit_corner((get_modelview_matrix()*gi[0].adjacentPositions[2]).xyz, -go.percentual_splat_size,  go.percentual_splat_size);
