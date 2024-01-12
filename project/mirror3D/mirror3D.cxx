@@ -44,8 +44,15 @@ struct PointIndexBuffer {
 class rgbd_mesh_renderer :
 	public rgbd::rgbd_point_renderer
 {
+public:
+	
+	bool build_shader_program(cgv::render::context& ctx, cgv::render::shader_program& prog, const cgv::render::shader_define_map& defines) override;
 	
 };
+
+bool rgbd_mesh_renderer::build_shader_program(cgv::render::context& ctx, cgv::render::shader_program& prog, const cgv::render::shader_define_map& defines) {
+		return prog.build_program(ctx, "mirror3D.glpr", true, defines);
+}
 
 class mirror3D :
 	public rgbd::rgbd_starter<cgv::base::node>,
@@ -90,8 +97,8 @@ protected:
 	cgv::render::texture color;
 
 	// default point renderer
-	rgbd::rgbd_point_renderer pr;
-	//rgbd_mesh_renderer pr;
+	//rgbd::rgbd_point_renderer pr;
+	rgbd_mesh_renderer pr;
 
 	// somthing for the timer event from vr_rgbd
 	std::future<size_t> future_handle;

@@ -1,1 +1,10 @@
-compute_file:mirror3D.glcs
+vertex_file:mirror3D.glvs
+vertex_file:camera.glsl
+vertex_file:rgbd.glsl
+geometry_file:mirror3D.glgs
+geometry_file:view.glsl
+geometry_file:splat.glsl
+fragment_file:fragment.glfs
+fragment_file:a_buffer_lib.glfs
+fragment_file:splat.glsl
+fragment_file:mirror3D.glfs
