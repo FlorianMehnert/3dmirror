@@ -13,6 +13,7 @@ uniform float blend_width_in_pixel = 1.0;
 uniform float max_distance = 10.0;
 uniform bool construct_quads = false;
 uniform bool render_quads = true;
+uniform float discard_dst = 0.02;
 
 in POINT_GS {
 	vec4 color;
@@ -21,6 +22,7 @@ in POINT_GS {
 	float percentual_halo_width;
 	float depth_offset;
 	vec4 adjacentPositions[4];
+	bool is_correct;
 } gi[];
 
 out POINT_FS {
@@ -52,11 +54,20 @@ void prepare_splat(
 	out float percentual_blend_width, out float percentual_splat_size);
 //***** end interface of surface.glsl ***********************************
 
-void emit_corner(in vec3 corner_eye, in float u, in float v)
+void emit_corner(in vec3 corner_eye)
 {
-	go.uv = vec2(u,v);
 	gl_Position	= get_projection_matrix() * vec4(corner_eye,1.0);
 	EmitVertex();
+}
+
+bool depth_difference_ok(){
+	return abs(gi[0].adjacentPositions[0].z - gi[0].adjacentPositions[1].z) < discard_dst &&
+	abs(gi[0].adjacentPositions[1].z - gi[0].adjacentPositions[2].z) < discard_dst &&
+	abs(gi[0].adjacentPositions[2].z - gi[0].adjacentPositions[3].z) < discard_dst &&
+	abs(gi[0].adjacentPositions[3].z - gi[0].adjacentPositions[0].z) < discard_dst &&
+	abs(gi[0].adjacentPositions[0].z - gi[0].adjacentPositions[2].z) < discard_dst &&
+	abs(gi[0].adjacentPositions[0].z - gi[0].adjacentPositions[3].z) < discard_dst &&
+	abs(gi[0].adjacentPositions[1].z - gi[0].adjacentPositions[3].z) < discard_dst;
 }
 
 void main()
@@ -94,26 +105,22 @@ void main()
 	// scale by splat radius
 	dx_eye *= splat_radius;
 	dy_eye *= splat_radius;
-	// generate splat vertices
-	// alternatively: gl_in[0].gl_Position).xyz > center_eye.z
-	//if (do_distance_cull){
-		if (max_distance > gl_in[0].gl_Position.z){
-			// actually create two triangles from the 4 points
-			if (construct_quads){
-				// since triangle strip it should create two triangles -> TODO: check if get_projection_matrix() is needed since this might turn the whole quad to view to the direction of the viewer
-				// TODO: implement multiple construction cases?
-				// TODO: discard if one point is way off
-				emit_corner((get_modelview_matrix()*gl_in[0].gl_Position).xyz, go.percentual_splat_size, -go.percentual_splat_size);
-		  		emit_corner((get_modelview_matrix()*gi[0].adjacentPositions[1]).xyz, go.percentual_splat_size,  go.percentual_splat_size);
- 				emit_corner((get_modelview_matrix()*gi[0].adjacentPositions[3]).xyz, -go.percentual_splat_size, -go.percentual_splat_size);
- 				emit_corner((get_modelview_matrix()*gi[0].adjacentPositions[2]).xyz, -go.percentual_splat_size,  go.percentual_splat_size);
-			}else {
-				emit_corner(center_eye + dx_eye - dy_eye,  go.percentual_splat_size, -go.percentual_splat_size);
-				emit_corner(center_eye + dx_eye + dy_eye,  go.percentual_splat_size,  go.percentual_splat_size);
-				emit_corner(center_eye - dx_eye - dy_eye, -go.percentual_splat_size, -go.percentual_splat_size);
-				emit_corner(center_eye - dx_eye + dy_eye, -go.percentual_splat_size,  go.percentual_splat_size);
+	if (max_distance > gl_in[0].gl_Position.z){
+		// create two triangles from the 4 points
+		if (construct_quads){
+			// TODO: implement multiple construction cases?
+			if (depth_difference_ok()){
+				emit_corner((get_modelview_matrix()*gi[0].adjacentPositions[0]).xyz);
+		  		emit_corner((get_modelview_matrix()*gi[0].adjacentPositions[1]).xyz);
+ 				emit_corner((get_modelview_matrix()*gi[0].adjacentPositions[3]).xyz);
+ 				emit_corner((get_modelview_matrix()*gi[0].adjacentPositions[2]).xyz);
 			}
-			EndPrimitive();
-	//	}
+		}else {
+			emit_corner(center_eye + dx_eye - dy_eye);
+			emit_corner(center_eye + dx_eye + dy_eye);
+			emit_corner(center_eye - dx_eye - dy_eye);
+			emit_corner(center_eye - dx_eye + dy_eye);
+		}
+		EndPrimitive();
 	}
 }

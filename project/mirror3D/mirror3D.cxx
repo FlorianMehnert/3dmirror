@@ -124,6 +124,7 @@ protected:
 	bool shader_demo = true;
 	bool construct_quads = true;
 	float distance = 5.0;
+	float discard = 0.02;
 	bool render_quads = true;
 	bool depth_lookup = false;
 
@@ -230,7 +231,8 @@ public:
 		add_member_control(this, "surfel render", surfel, "check");
 		add_member_control(this, "simple cube", simple_cube, "check");
 		add_member_control(this, "shader demo", shader_demo, "check");
-		add_member_control(this, "distance", distance, "value_slider", "min=0;max=5");
+		add_member_control(this, "distance", distance, "value_slider", "min=0;max=10");
+		add_member_control(this, "discard_dst", discard, "value_slider", "min=0;max=1;step=0.01");
 		add_member_control(this, "construct quads", construct_quads, "check");
 		add_member_control(this, "render quads", render_quads, "check");
 		if (begin_tree_node("capture", is_running)) {
@@ -479,8 +481,8 @@ public:
 					(color_frame_changed || depth_frame_changed)) {
 
 					if (!future_handle.valid()) {
-						color_frame; // color_frame2 = color_frame
-						depth_frame; // depth_frame2 = depth_frame
+						color_frame;
+						depth_frame;
 						future_handle = std::async(&mirror3D::construct_point_cloud, this);
 					}
 				}
@@ -516,6 +518,7 @@ public:
 			pr.ref_prog().set_uniform(ctx, "depth_image", 0);
 			pr.ref_prog().set_uniform(ctx, "color_image", 1);
 			pr.ref_prog().set_uniform(ctx, "max_distance", distance);
+			pr.ref_prog().set_uniform(ctx, "discard_dst", discard);
 			pr.ref_prog().set_uniform(ctx, "construct_quads", construct_quads);
 			pr.ref_prog().set_uniform(ctx, "render_quads", render_quads);
 			if (!surfel) {

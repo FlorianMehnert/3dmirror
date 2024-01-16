@@ -61,6 +61,7 @@ out POINT_GS {
 	float percentual_halo_width;
 	float depth_offset;
 	vec4 adjacentPositions[4];
+	bool is_correct;
 } vo;
 
 //out LINE_GS {
@@ -114,25 +115,20 @@ void main()
 			vo.depth_offset = 200000.0;
 		}
 	}
-	
-	// TODO: do not forget to discard edge lookups
-	vec3 p0 = vec3(0.0);
-		float p0_depth = 65535.0 * texture(depth_image, pixel_to_texture_coordinates(xp+ivec2(0,0), depth_calib)).r;
-	if (construct_point(xp, depth, p0)){
-		vo.adjacentPositions[0] = vec4(p0, 1.0);
-	}
-	vec3 p1 = vec3(0.0);
-	float p1_depth = 65535.0 * texture(depth_image, pixel_to_texture_coordinates(xp+ivec2(1,0), depth_calib)).r;
-	if (construct_point(xp+ivec2(1,0), p1_depth, p1))
-		vo.adjacentPositions[1] = vec4(p1, 1.0);
 
+	float p0_depth = 65535.0 * texture(depth_image, pixel_to_texture_coordinates(xp+ivec2(0,0), depth_calib)).r;
+	float p1_depth = 65535.0 * texture(depth_image, pixel_to_texture_coordinates(xp+ivec2(1,0), depth_calib)).r;
 	float p2_depth = 65535.0 * texture(depth_image, pixel_to_texture_coordinates(xp+ivec2(1,1), depth_calib)).r;
-	vec3 p2 = vec3(0.0);
-	if (construct_point(xp+ivec2(1,1), p2_depth, p2))
-		vo.adjacentPositions[2] = vec4(p2, 1.0);
-	
 	float p3_depth = 65535.0 * texture(depth_image, pixel_to_texture_coordinates(xp+ivec2(0,1), depth_calib)).r;
-	vec3 p3 = vec3(0.0);
-	if (construct_point(xp+ ivec2(0, 1), p3_depth, p3))
-		vo.adjacentPositions[3] = vec4(p3, 1.0);
+	
+	//texture_to_pixel_coordinates(p0_depth ,depth_calib)
+
+	if (construct_point(xp, p0_depth, p))
+		vo.adjacentPositions[0] = vec4(p, 1.0);
+	if (construct_point(xp+ivec2(1,0), p1_depth, p))
+		vo.adjacentPositions[1] = vec4(p, 1.0);
+	if (construct_point(xp+ivec2(1,1), p2_depth, p))
+		vo.adjacentPositions[2] = vec4(p, 1.0);
+	if (construct_point(xp+ ivec2(0, 1), p3_depth, p))
+		vo.adjacentPositions[3] = vec4(p, 1.0);
 }
