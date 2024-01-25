@@ -67,7 +67,6 @@ protected:
 	std::vector<usvec3> sP;
 	std::vector<rgb8> sC;
 
-
 	// using surfel renderer to use instanced rendering
 	cgv::render::surfel_render_style source_srs;
 
@@ -127,9 +126,8 @@ protected:
 	float discard = 0.02;
 	bool render_quads = true;
 	bool depth_lookup = false;
+	bool flip_y = true;
 
-	// for simple cube
-	cgv::media::illum::surface_material material;
 
 public:
 	mirror3D() : color_tex("uint8[R,G,B]"), depth_tex("uint16[R]")
@@ -139,17 +137,6 @@ public:
 		pr.set_geometry_less_rendering(true);
 		prs.point_size = 5;
 		prs.blend_width_in_pixel = 0;
-		
-		// set surfel style
-		source_srs.measure_point_size_in_pixel = false;
-		source_srs.point_size = 1.25f;
-		source_srs.blend_width_in_pixel = 1.0f;
-		source_srs.blend_points = true;
-		source_srs.illumination_mode = cgv::render::IM_TWO_SIDED;
-		connect(cgv::gui::get_animation_trigger().shoot, this, &mirror3D::timer_event);
-
-		// for simple cube
-		material.set_diffuse_reflectance(rgb(0.7f, 0.2f, 0.4f));
 
 	}
 	void on_set(void* member_ptr)
@@ -228,13 +215,13 @@ public:
 	{
 		add_decorator("mirror3D", "heading", "level=1");
 		add_member_control(this, "debug_frame_timing", debug_frame_timing, "check");
-		add_member_control(this, "surfel render", surfel, "check");
-		add_member_control(this, "simple cube", simple_cube, "check");
 		add_member_control(this, "shader demo", shader_demo, "check");
 		add_member_control(this, "distance", distance, "value_slider", "min=0;max=10");
 		add_member_control(this, "discard_dst", discard, "value_slider", "min=0;max=1;step=0.01");
 		add_member_control(this, "construct quads", construct_quads, "check");
+		add_member_control(this, "flip y", flip_y, "toggle", "w=66", " ");
 		add_member_control(this, "render quads", render_quads, "check");
+		
 		if (begin_tree_node("capture", is_running)) {
 			align("\a");
 			create_gui_base(this, *this);
@@ -267,29 +254,24 @@ public:
 		// render points
 		cgv::render::ref_point_renderer(ctx, 1);
 		
-		// render surfels instead of normal points
-		cgv::render::ref_surfel_renderer(ctx, 1);
-
-		
 		// something with compute shaders
 		// cgv::render::ref_clod_point_renderer(ctx, 1);
 		
 		// add own shader code -> build glpr in the current folder
 
 		// https://www.khronos.org/opengl/wiki/Compute_Shader
-		setup_compute_shader(ctx);
+		//setup_compute_shader(ctx);
 		
 		// create buffer object passed to compute shader later (depth frame is 512x512)
-		int size = 512*512*3*sizeof(GLuint);//sizeof(float);// +sizeof(GLuint);
-		std::cout << size << std::endl;
-		create_storage_buffer(1024);
+		//int size = 512*512*3*sizeof(GLuint);//sizeof(float);// +sizeof(GLuint);
+		//std::cout << size << std::endl;
+		//create_storage_buffer(1024);
 
 		return pr.init(ctx);
 	}
 	void clear(cgv::render::context& ctx)
 	{
 		cgv::render::ref_point_renderer(ctx, -1);
-		cgv::render::ref_surfel_renderer(ctx, -1);
 
 		pr.clear(ctx);
 		if (is_running) {
@@ -382,113 +364,19 @@ public:
 			if (depth_frame_changed) {
 				create_or_update_texture_from_frame(ctx, depth_tex, depth_frame);
 			}
-
+			// lookup and geometryless are checked
 			// sP and sC are populated with point data
 			if (!pr.do_geometry_less_rendering()) {
 				if (!pr.do_lookup_color()) {
 					rgbd_inp.map_color_to_depth(depth_frame, color_frame, warped_color_frame);
 					rgbd::construct_rgbd_render_data_with_color(depth_frame, warped_color_frame, sP, sC);
+					// flip y if needed
+					
 				}
 				else
 					// TODO: use own function to avoid pushback : alternatively use own construct function (without pushback)
 					rgbd::construct_rgbd_render_data(depth_frame, sP);
 			}
-			//talk_to_compute_shader(ctx);
-	}
-
-	// see vr_rgbd
-	size_t construct_point_cloud()
-	{
-		intermediate_pcl.clear();
-		const unsigned short* depths = reinterpret_cast<const unsigned short*>(&depth_frame.frame_data.front());
-		const unsigned char* colors = reinterpret_cast<const unsigned char*>(&color_frame.frame_data.front());
-
-		rgbd_inp.map_color_to_depth(depth_frame, color_frame, warped_color_frame);
-		colors = reinterpret_cast<const unsigned char*>(&warped_color_frame.frame_data.front());
-
-		int i = 0;
-		for (int y = 0; y < depth_frame.height; ++y)
-			for (int x = 0; x < depth_frame.width; ++x) {
-				vec3 p;
-				if (rgbd_inp.map_depth_to_point(x, y, depths[i], &p[0])) {
-					// flipping y to make it the same direction as in pixel y coordinate
-					p = -p;
-					rgba8 c(colors[4 * i + 2], colors[4 * i + 1], colors[4 * i], 255);
-					vertex v;
-					// filter points without color for 32 bit formats
-					static const rgba8 filter_color = rgba8(0, 0, 0, 255);
-					if (!(c == filter_color)) {
-						v.color = c;
-						v.point = p;
-					}
-					intermediate_pcl.add_point(v.point);
-				}
-				++i;
-			}
-		return intermediate_pcl.get_nr_points();
-	}
-
-	void timer_event(double t, double dt)
-	{
-		if (rgbd_inp.is_started()) {
-			if (rgbd_inp.is_started()) {
-				bool new_frame;
-				bool found_frame = false;
-				bool depth_frame_changed = false;
-				bool color_frame_changed = false;
-			}
-		}
-
-		// in case a point cloud is being constructed
-		if (future_handle.valid()) {
-			// check for termination of thread
-			if (future_handle.wait_for(std::chrono::milliseconds(0)) == std::future_status::ready) {
-				size_t N = future_handle.get();
-				// copy computed point cloud
-				current_pcl = intermediate_pcl;
-				post_redraw();
-			}
-		}
-		if (rgbd_inp.is_started()) {
-			if (rgbd_inp.is_started()) {
-				bool new_frame;
-				bool found_frame = false;
-				bool depth_frame_changed = false;
-				bool color_frame_changed = false;
-				do {
-					new_frame = false;
-					bool new_color_frame_changed = rgbd_inp.get_frame(rgbd::IS_COLOR, color_frame, 0);
-					// TODO add ORB feature extraction and estimate camera pose
-					if (new_color_frame_changed) {
-						++nr_color_frames;
-						color_frame_changed = new_color_frame_changed;
-						new_frame = true;
-						update_member(&nr_color_frames);
-					}
-					bool new_depth_frame_changed = rgbd_inp.get_frame(rgbd::IS_DEPTH, depth_frame, 0);
-					if (new_depth_frame_changed) {
-						++nr_depth_frames;
-						depth_frame_changed = new_depth_frame_changed;
-						new_frame = true;
-						update_member(&nr_depth_frames);
-					}
-					if (new_frame)
-						found_frame = true;
-				} while (new_frame);
-				if (found_frame)
-					post_redraw();
-				if (color_frame.is_allocated() && depth_frame.is_allocated() &&
-					(color_frame_changed || depth_frame_changed)) {
-
-					if (!future_handle.valid()) {
-						color_frame;
-						depth_frame;
-						future_handle = std::async(&mirror3D::construct_point_cloud, this);
-					}
-				}
-			}
-		}
-
 	}
 
 	void draw(cgv::render::context& ctx)
@@ -521,9 +409,7 @@ public:
 			pr.ref_prog().set_uniform(ctx, "discard_dst", discard);
 			pr.ref_prog().set_uniform(ctx, "construct_quads", construct_quads);
 			pr.ref_prog().set_uniform(ctx, "render_quads", render_quads);
-			if (!surfel) {
-				pr.draw(ctx, 0, sP.size());
-			}
+			pr.draw(ctx, 0, sP.size());
 			
 			pr.disable(ctx);
 			if (pr.do_lookup_color())
@@ -532,37 +418,7 @@ public:
 				depth_tex.disable(ctx);
 			}
 		
-		// draw surfels
-		cgv::render::surfel_renderer& sr = ref_surfel_renderer(ctx);
-		sr.set_render_style(source_srs);
-		if (surfel) {
-			ctx.push_modelview_matrix();
-			if (current_pcl.get_nr_points() > 0) {
-				int num_points = current_pcl.get_nr_points();
-				sr = ref_surfel_renderer(ctx);
-				//sr.set_position_array(ctx, &pcl.pnt(0), num_points);
-				sr.set_position_array(ctx, &current_pcl.pnt(0), num_points);
-
-				// looks like there is already a function for normal creation
-				if (!current_pcl.has_normals()) {
-					current_pcl.create_normals();
-					for (int i = 0; i < current_pcl.get_nr_points(); ++i)
-						current_pcl.nml(i) = cgv::math::fvec<float, 3>(1, 0, 0);
-				}
-
-				sr.set_normal_array(ctx, &current_pcl.nml(0), num_points);
-
-				cgv::math::fvec<float, 4> point_color = vec4( 0.0, 0.0, 1.0, 0.8 );
-				std::vector<cgv::math::fvec<float, 4>> color(num_points, point_color);
-				sr.set_color_array(ctx, color);
-				sr.render(ctx, 0, num_points);
-			}
-			ctx.pop_modelview_matrix();
-		}
-		if (shader_demo) {
-			vres = uvec3(16, 16, 1);
-		}
-		if (simple_cube) {
+		/*if (simple_cube) {
 			ctx.ref_surface_shader_program().enable(ctx);
 			ctx.set_material(material);
 			ctx.push_modelview_matrix();
@@ -570,9 +426,8 @@ public:
 			ctx.tesselate_unit_cube();
 			ctx.push_modelview_matrix();
 			ctx.pop_modelview_matrix();
-			ctx.pop_modelview_matrix();
 			ctx.ref_surface_shader_program().disable(ctx);
-		}
+		}*/
 		glEnable(GL_CULL_FACE);
 	}
 };

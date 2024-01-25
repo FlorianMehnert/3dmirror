@@ -15,6 +15,7 @@ git clone --recurse-submodules https://github.com/FlorianMehnert/3dmirror.git
 - add `%AZURE_KINECT_SDK%\windows-desktop\x86\release\bin` [to PATH](https://www.architectryan.com/2018/03/17/add-to-the-path-on-windows-10/)
     - should this not work for your pc: add `%AZURE_KINECT_SDK%\windows-desktop\amd64\release\bin` instead to PATH (make sure this is not set multiple times)
 - camera not accessible for kinect viewer: allow desktop apps to access camera [(Start > Settings > Privacy & security > Camera)](https://support.microsoft.com/en-us/windows/manage-app-permissions-for-your-camera-in-windows-87ebc757-1f87-7bbf-84b5-0686afb6ca6b)
+- `LibUSB transfer status of 00000001 unexpected` - [check the power supply of the kinect or just reconnect the power](https://github.com/microsoft/Azure-Kinect-Sensor-SDK/issues/1335)
 
 ## build the mirror3D
 1. download [visual studio 2022](https://visualstudio.microsoft.com/de/downloads/)
