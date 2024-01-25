@@ -12,6 +12,7 @@
 #include <rgbd_render/rgbd_point_renderer.h>
 #include <cgv/utils/pointer_test.h>
 #include <chrono>
+#include <numeric>
 
 // specifically for mirror3D plugin
 #include <mirror3D.h>
@@ -26,7 +27,6 @@
 using namespace cgv::render;
 
 //#include <cgv_gl/point_renderer.h>
-#include <cgv_gl/surfel_renderer.h>
 
 //#include <cgv_gl/gl/gl.h>
 
@@ -67,9 +67,6 @@ protected:
 	std::vector<usvec3> sP;
 	std::vector<rgb8> sC;
 
-	// using surfel renderer to use instanced rendering
-	cgv::render::surfel_render_style source_srs;
-
 	// color warped to depth image is only needed in case CPU is used to lookup colors
 	rgbd::frame_type warped_color_frame;
 
@@ -99,14 +96,17 @@ protected:
 	//rgbd::rgbd_point_renderer pr;
 	rgbd_mesh_renderer pr;
 
+	shader_program compute_prog;
+
 	// somthing for the timer event from vr_rgbd
 	std::future<size_t> future_handle;
 
 	// buffer to hold all vertices for the compute shader
-	GLuint input_buffer = 0;
+	GLuint input_buffer;
 	GLuint points;
 	vec3 vertex_array[262144]; // 512 x 512
 	uvec3 vres;
+	int data[128];
 
 	// index buffer
 	PointIndexBuffer PIB[262144];
@@ -117,9 +117,6 @@ protected:
 	// shader shared buffer object creation
 	GLuint buffer_id = 0;
 
-	// toggle via gui - construct pcl or use surfel renderer
-	bool surfel = false;
-	bool simple_cube = false;
 	bool shader_demo = true;
 	bool construct_quads = true;
 	float distance = 5.0;
@@ -128,6 +125,9 @@ protected:
 	bool depth_lookup = false;
 	bool flip_y = true;
 
+	bool one_tap_press = false;
+	bool one_tap_flag = false;
+
 
 public:
 	mirror3D() : color_tex("uint8[R,G,B]"), depth_tex("uint16[R]")
@@ -135,6 +135,7 @@ public:
 		set_name("mirror3D");
 		pr.set_distortion_map_usage(true);
 		pr.set_geometry_less_rendering(true);
+		pr.configure_invalid_color_handling(true, rgba(1, 0, 1, 1));
 		prs.point_size = 5;
 		prs.blend_width_in_pixel = 0;
 
@@ -220,6 +221,8 @@ public:
 		add_member_control(this, "discard_dst", discard, "value_slider", "min=0;max=1;step=0.01");
 		add_member_control(this, "construct quads", construct_quads, "check");
 		add_member_control(this, "flip y", flip_y, "toggle", "w=66", " ");
+		add_member_control(this, "one time execution", one_tap_press, "toggle");
+		add_member_control(this, "unlock", one_tap_flag, "toggle");
 		add_member_control(this, "render quads", render_quads, "check");
 		
 		if (begin_tree_node("capture", is_running)) {
@@ -234,15 +237,6 @@ public:
 			add_gui("point style", prs);
 			align("\a");
 			end_tree_node(prs);
-		}
-
-		// surfel_render
-		if (begin_tree_node("Surfel Rendering", source_srs)) {
-			align("\a");
-			//sr.create_gui(this, *this);
-			add_gui("surfel_style", source_srs);
-			align("\b");
-			end_tree_node(source_srs);
 		}
 		
 	}
@@ -265,7 +259,7 @@ public:
 		// create buffer object passed to compute shader later (depth frame is 512x512)
 		//int size = 512*512*3*sizeof(GLuint);//sizeof(float);// +sizeof(GLuint);
 		//std::cout << size << std::endl;
-		//create_storage_buffer(1024);
+		init_compute_shader(ctx);
 
 		return pr.init(ctx);
 	}
@@ -278,7 +272,7 @@ public:
 			is_running = false;
 			on_set_base(&is_running, *this);
 		}
-		//glDeleteBuffers(1, &buffer_id);
+		glDeleteBuffers(1, &input_buffer);
 	}
 
 	// prints errors in debug builds if shader code is wrong
@@ -301,12 +295,15 @@ public:
 		}
 	}
 
-	void create_storage_buffer(size_t size) {
+	void init_compute_shader(context& ctx) {
 		// TODO: delete Buffer
-		glGenBuffers(1, &buffer_id);
-		glBindBuffer(GL_ARRAY_BUFFER, buffer_id);
-		glBufferData(GL_ARRAY_BUFFER, size, &vertex_array, GL_DYNAMIC_DRAW);
-		//glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 1, buffer_id);
+		if (!compute_prog.is_created())
+			compute_prog.build_program(ctx, "compute_test.glpr", true);
+		glGenBuffers(1, &input_buffer);
+		glBindBuffer(GL_SHADER_STORAGE_BUFFER, input_buffer);
+		std::iota(std::begin(data), std::end(data), 1);
+		glBufferData(GL_SHADER_STORAGE_BUFFER, sizeof(data), data, GL_DYNAMIC_COPY);
+		glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 0, input_buffer);
 	}
 
 	void frame_to_buffer() {
@@ -333,24 +330,18 @@ public:
 	}
 
 	void talk_to_compute_shader(cgv::render::context& ctx) {
-
-		// dummy data see gradient_viewer.cxx
-		unsigned int w = 192;
-		unsigned int h = 128;
-		prog.enable(ctx);
-		shader_program* cmpt_ptr = &prog;
-
-		cmpt_ptr->set_uniform(ctx, "width", w);
-		cmpt_ptr->set_uniform(ctx, "height", h);
-		// frame_to_buffer();
-		glBindBufferBase(GL_ARRAY_BUFFER, 1, buffer_id); // www.khronos.org/opengl/wiki/Buffer_Object
-		glDispatchCompute(16, 16, 1);
-		
-		// wait for the compute shader to finish
-		//glMemoryBarrier(GL_SHADER_STORAGE_BARRIER_BIT);
-		
-		prog.disable(ctx);
-		//std::cout << compute_buffer << std::endl;
+		std::cout << "talking start" << std::endl;
+		compute_prog.enable(ctx);
+		glDispatchCompute(sizeof(data), 1, 1);
+		glMemoryBarrier(GL_SHADER_STORAGE_BARRIER_BIT);
+		int* updatedData = (int*)glMapBufferRange(GL_SHADER_STORAGE_BUFFER, 0, sizeof(data), GL_MAP_READ_BIT);
+		glUnmapBuffer(GL_SHADER_STORAGE_BUFFER);
+		compute_prog.disable(ctx);
+		std::cout << "talking end" << std::endl;
+		for (int i = 0; i < 5; ++i) {
+			int value = updatedData[i];
+			std::cout << "Element " << i << ": " << value << std::endl;
+		}
 	}
 
 	void init_frame(cgv::render::context& ctx)
@@ -364,14 +355,10 @@ public:
 			if (depth_frame_changed) {
 				create_or_update_texture_from_frame(ctx, depth_tex, depth_frame);
 			}
-			// lookup and geometryless are checked
-			// sP and sC are populated with point data
 			if (!pr.do_geometry_less_rendering()) {
 				if (!pr.do_lookup_color()) {
 					rgbd_inp.map_color_to_depth(depth_frame, color_frame, warped_color_frame);
 					rgbd::construct_rgbd_render_data_with_color(depth_frame, warped_color_frame, sP, sC);
-					// flip y if needed
-					
 				}
 				else
 					// TODO: use own function to avoid pushback : alternatively use own construct function (without pushback)
@@ -381,6 +368,12 @@ public:
 
 	void draw(cgv::render::context& ctx)
 	{
+		if (one_tap_press && !one_tap_flag) {
+			one_tap_press = !one_tap_press;
+			one_tap_flag = true;
+			std::cout << "printing lool "<< std::endl;
+			talk_to_compute_shader(ctx);
+		}
 		if (!pr.ref_prog().is_linked())
 			return;
 		if (!depth_tex.is_created())
@@ -415,19 +408,8 @@ public:
 			if (pr.do_lookup_color())
 				color_tex.disable(ctx);
 			if (pr.do_geometry_less_rendering())
-				depth_tex.disable(ctx);
+				depth_tex.disable(ctx); 
 			}
-		
-		/*if (simple_cube) {
-			ctx.ref_surface_shader_program().enable(ctx);
-			ctx.set_material(material);
-			ctx.push_modelview_matrix();
-			ctx.set_color(rgb(0, 1, 0.2f));
-			ctx.tesselate_unit_cube();
-			ctx.push_modelview_matrix();
-			ctx.pop_modelview_matrix();
-			ctx.ref_surface_shader_program().disable(ctx);
-		}*/
 		glEnable(GL_CULL_FACE);
 	}
 };
