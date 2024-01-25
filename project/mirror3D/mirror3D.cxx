@@ -37,6 +37,13 @@ struct vertex : public cgv::render::render_types
 	rgba8 color;
 };
 
+struct Vertex {
+	float x;
+	float y;
+	float z;
+	unsigned int colors;
+};
+
 struct PointIndexBuffer {
 	int i, j;
 };
@@ -97,6 +104,7 @@ protected:
 	rgbd_mesh_renderer pr;
 
 	shader_program compute_prog;
+	shader_program raycast_prog;
 
 	// somthing for the timer event from vr_rgbd
 	std::future<size_t> future_handle;
@@ -107,6 +115,9 @@ protected:
 	vec3 vertex_array[262144]; // 512 x 512
 	uvec3 vres;
 	int data[128];
+
+	// compute shader buffers
+	Vertex vertices[262144];
 
 	// index buffer
 	PointIndexBuffer PIB[262144];
@@ -127,6 +138,9 @@ protected:
 
 	bool one_tap_press = false;
 	bool one_tap_flag = false;
+
+	// for simple cube
+	cgv::media::illum::surface_material material;
 
 
 public:
@@ -254,12 +268,9 @@ public:
 		// add own shader code -> build glpr in the current folder
 
 		// https://www.khronos.org/opengl/wiki/Compute_Shader
-		//setup_compute_shader(ctx);
-		
-		// create buffer object passed to compute shader later (depth frame is 512x512)
-		//int size = 512*512*3*sizeof(GLuint);//sizeof(float);// +sizeof(GLuint);
-		//std::cout << size << std::endl;
-		init_compute_shader(ctx);
+		//init_compute_shader(ctx);
+		init_raycast_compute_shader(ctx);
+		material.set_diffuse_reflectance(rgb(0.7f, 0.2f, 0.4f));
 
 		return pr.init(ctx);
 	}
@@ -306,29 +317,6 @@ public:
 		glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 0, input_buffer);
 	}
 
-	void frame_to_buffer() {
-		std::memset(vertex_array, 0, sizeof(vertex_array)); // set all to 0
-		if (!depth_frame.frame_data.empty()) {
-			const unsigned short* depths = reinterpret_cast<const unsigned short*>(&depth_frame.frame_data.front());
-			int i = 0;
-
-			for (int y = 0; y < depth_frame.height; ++y) {
-				for (int x = 0; x < depth_frame.width; ++x) {
-					vec3 p;
-					if (rgbd_inp.map_depth_to_point(x, y, depths[i], &p[0])) {
-						vertex_array[i] = depths[i];
-					}
-					++i;
-				}
-			}
-			// depth frame size is 512 x 512 x 2
-			std::cout << "depth_frame height: " << depth_frame.height << std::endl;
-		}
-		else {
-			std::cout << "no frame data" << std::endl;
-		}
-	}
-
 	void talk_to_compute_shader(cgv::render::context& ctx) {
 		std::cout << "talking start" << std::endl;
 		compute_prog.enable(ctx);
@@ -342,6 +330,67 @@ public:
 			int value = updatedData[i];
 			std::cout << "Element " << i << ": " << value << std::endl;
 		}
+	}
+
+	void init_raycast_compute_shader(context& ctx) {
+		if (!raycast_prog.is_created())
+			raycast_prog.build_program(ctx, "azure_raycast.glpr", true);
+
+		shaderCheckError(raycast_prog, "raycast_prog");
+		// Create and initialize the Vertex buffer
+		GLuint vertexBuffer;
+		glGenBuffers(1, &vertexBuffer);
+		glBindBuffer(GL_SHADER_STORAGE_BUFFER, vertexBuffer);
+		glBufferData(GL_SHADER_STORAGE_BUFFER, sizeof(vertices), vertices, GL_STATIC_DRAW);
+
+		// Bind the buffer to the specified binding point
+		glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 1, vertexBuffer);
+
+		// Create and initialize the ssResultBuffer
+		GLuint resultBuffer;
+		glGenBuffers(1, &resultBuffer);
+		glBindBuffer(GL_SHADER_STORAGE_BUFFER, resultBuffer);
+
+		// 8192 is 512 * 512 / 32 for depth image size divided by workload
+		glBufferData(GL_SHADER_STORAGE_BUFFER, sizeof(Vertex)*8192, nullptr, GL_DYNAMIC_COPY);
+
+		// Bind the buffer to the specified binding point
+		glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 0, resultBuffer);
+
+		// Create and initialize the ssResults2Buffer
+		GLuint results2Buffer;
+		glGenBuffers(1, &results2Buffer);
+		glBindBuffer(GL_SHADER_STORAGE_BUFFER, results2Buffer);
+		// uint + float * work group
+		glBufferData(GL_SHADER_STORAGE_BUFFER, (sizeof(unsigned int) + sizeof(float)) * 8192, nullptr, GL_DYNAMIC_COPY);
+
+		// Bind the buffer to the specified binding point
+		glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 20, results2Buffer);
+
+		// Set uniform values
+		raycast_prog.set_uniform(ctx, "sphere_radius", 0.02);
+		raycast_prog.set_uniform(ctx, "ray_direction", vec4(0,1,0,1)); // pls change to vertex buffer containing constructed points
+		//raycast_prog.set_uniform(ctx, "ray_origin", vec4(0,0,0)); // pls change to vertex buffer containing constructed points
+	}
+
+	void talk_to_raycast_shader(cgv::render::context& ctx) {
+		raycast_prog.enable(ctx);
+		glDispatchCompute(sizeof(512*512), 1, 1);
+		glMemoryBarrier(GL_SHADER_STORAGE_BARRIER_BIT);
+		//int* updatedData = (int*)glMapBufferRange(GL_SHADER_STORAGE_BUFFER, 0, sizeof(data), GL_MAP_READ_BIT);
+		glUnmapBuffer(GL_SHADER_STORAGE_BUFFER);
+		raycast_prog.disable(ctx);
+	}
+
+	void draw_cube(context& ctx) {
+		ctx.ref_surface_shader_program().enable(ctx);
+		ctx.set_material(material);
+		ctx.push_modelview_matrix();
+		ctx.set_color(rgb(0, 1, 0.2f));
+		ctx.mul_modelview_matrix(cgv::math::scale4<double>(0.1, 0.1, 0.1));
+		ctx.tesselate_unit_cube();
+		ctx.pop_modelview_matrix();
+		ctx.ref_surface_shader_program().disable(ctx);
 	}
 
 	void init_frame(cgv::render::context& ctx)
@@ -410,6 +459,7 @@ public:
 			if (pr.do_geometry_less_rendering())
 				depth_tex.disable(ctx); 
 			}
+		draw_cube(ctx);
 		glEnable(GL_CULL_FACE);
 	}
 };
