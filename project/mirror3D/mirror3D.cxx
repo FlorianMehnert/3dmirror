@@ -25,17 +25,11 @@
 #include <future>
 
 using namespace cgv::render;
+using namespace cgv;
 
 //#include <cgv_gl/point_renderer.h>
 
 //#include <cgv_gl/gl/gl.h>
-
-// from vr_rgbd
-struct vertex : public cgv::render::render_types
-{
-	vec3 point;
-	rgba8 color;
-};
 
 struct Vertex {
 	float x;
