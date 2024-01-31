@@ -140,10 +140,12 @@ protected:
 	bool render_quads = true;
 	bool depth_lookup = false;
 	bool flip_y = true;
+	bool simple_cube = true;
 
+	// dispatch each time the button state is toggled
 	bool one_tap_press = false;
 	bool one_tap_flag = false;
-
+	
 	// for simple cube
 	cgv::media::illum::surface_material material;
 
@@ -240,10 +242,10 @@ public:
 		add_member_control(this, "distance", distance, "value_slider", "min=0;max=10");
 		add_member_control(this, "discard_dst", discard, "value_slider", "min=0;max=1;step=0.01");
 		add_member_control(this, "construct quads", construct_quads, "check");
-		add_member_control(this, "flip y", flip_y, "toggle", "w=66", " ");
+		//add_member_control(this, "flip y", flip_y, "toggle", "w=66", " "); // should be doable in config file
 		add_member_control(this, "one time execution", one_tap_press, "toggle");
-		add_member_control(this, "unlock", one_tap_flag, "toggle");
 		add_member_control(this, "render quads", render_quads, "check");
+		add_member_control(this, "show camera position", simple_cube, "check");
 		
 		if (begin_tree_node("capture", is_running)) {
 			align("\a");
@@ -324,18 +326,21 @@ public:
 	}
 
 	void talk_to_compute_shader(cgv::render::context& ctx) {
-		std::cout << "talking start" << std::endl;
+		
+		// calculate
 			compute_prog.enable(ctx);
 		glDispatchCompute(sizeof(data), 1, 1);
 		glMemoryBarrier(GL_SHADER_STORAGE_BARRIER_BIT);
-		int* updatedData = (int*)glMapBufferRange(GL_SHADER_STORAGE_BUFFER, 0, sizeof(data), GL_MAP_READ_BIT);
-		glUnmapBuffer(GL_SHADER_STORAGE_BUFFER);
+
+		// retrieve
+		glBindBuffer(GL_SHADER_STORAGE_BUFFER, input_buffer);
+		int* updatedData = (int*)glMapNamedBufferRange(input_buffer, 0, sizeof(data), GL_MAP_READ_BIT);
 		compute_prog.disable(ctx);
-		std::cout << "talking end" << std::endl;
 		for (int i = 0; i < 5; ++i) {
 			int value = updatedData[i];
 			std::cout << "Element " << i << ": " << value << std::endl;
 		}
+		glUnmapBuffer(GL_SHADER_STORAGE_BUFFER);
 	}
 	void init_raycast_compute_shader(context& ctx) {
 		if (!raycast_prog.is_created())
@@ -345,47 +350,67 @@ public:
 		
 		std::cout << "after build" << std::endl;
 		
-		// calculate size required for input buffer 
-		std::cout << "sizeof sP " << sizeof(sP) << std::endl;
-
-		// upload initial vertex buffer
+		// upload initial vertex buffer with size should be 16 bytes * 512 * 512 = 1572864 bytes
 		glGenBuffers(1, &vertexBuffer);
 		glBindBuffer(GL_SHADER_STORAGE_BUFFER, vertexBuffer);
-		glBufferData(GL_SHADER_STORAGE_BUFFER, sizeof(vertices), vertices, GL_STATIC_DRAW);
+		glBufferData(GL_SHADER_STORAGE_BUFFER, 4194304, vertices, GL_STATIC_DRAW);
 
-		glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 1, vertexBuffer);
+		glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 4, vertexBuffer);
 
 		glGenBuffers(1, &resultBuffer);
 		glBindBuffer(GL_SHADER_STORAGE_BUFFER, resultBuffer);
 
 		// 8192 is 512 * 512 / 32 for depth image size divided by workload
-		glBufferData(GL_SHADER_STORAGE_BUFFER, sizeof(Vertex)*8192, nullptr, GL_DYNAMIC_COPY);
-		glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 2, resultBuffer);
+		// only read since this is a result buffer
+		glBufferData(GL_SHADER_STORAGE_BUFFER, sizeof(Vertex)*2048, nullptr, GL_DYNAMIC_READ);
+		glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 6, resultBuffer);
 		glGenBuffers(1, &results2Buffer);
 		glBindBuffer(GL_SHADER_STORAGE_BUFFER, results2Buffer);
 		// uint + float * work group
-		glBufferData(GL_SHADER_STORAGE_BUFFER, (sizeof(unsigned int) + sizeof(float)) * 8192, nullptr, GL_DYNAMIC_COPY);
-		glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 3, results2Buffer);
+		glBufferData(GL_SHADER_STORAGE_BUFFER, (sizeof(unsigned int) + sizeof(float)) * 2048, nullptr, GL_DYNAMIC_READ);
+		glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 8, results2Buffer);
 	}
 
 	void talk_to_raycast_shader(cgv::render::context& ctx) {
 		raycast_prog.enable(ctx);
-		glDispatchCompute(sizeof(512*512), 1, 1);
-		glMemoryBarrier(GL_SHADER_STORAGE_BARRIER_BIT);
-		int* updatedData = (int*)glMapBufferRange(GL_SHADER_STORAGE_BUFFER, 3, sizeof(data), GL_MAP_READ_BIT);
-		glUnmapBuffer(GL_SHADER_STORAGE_BUFFER);
-		
 		// Set uniform values
 		raycast_prog.set_uniform(ctx, "sphere_radius", 0.02);
 		raycast_prog.set_uniform(ctx, "ray_direction", vec4(0, 1, 0, 1)); // pls change to vertex buffer containing constructed points
 		//raycast_prog.set_uniform(ctx, "ray_origin", vec4(0,0,0)); // pls change to vertex buffer containing constructed points
+		
+		glDispatchCompute(sizeof(512*512), 1, 1);
+		glMemoryBarrier(GL_SHADER_STORAGE_BARRIER_BIT);
 
-		raycast_prog.disable(ctx);
-		std::cout << "talking end" << std::endl;
-		for (int i = 0; i < 5; ++i) {
-			int value = updatedData[i];
-			std::cout << "raycast element " << i << ": " << value << std::endl;
+		// retrieve data from buffer
+		glBindBuffer(GL_SHADER_STORAGE_BUFFER, results2Buffer);
+		int* updatedData = (int*)glMapNamedBufferRange(results2Buffer, 0, (sizeof(unsigned int) + sizeof(float)) * 2048, GL_MAP_READ_BIT);
+		std::cout << "\x1b[1;31mtrying to retrieve contents of results2Buffer\x1b[0m" << std::endl;
+		if (updatedData) {
+			for (int i = 0; i < 10; ++i) {
+				int value = updatedData[i];
+				std::cout << "results2Buffer element " << i << ": " << value << std::endl;
+			}
 		}
+		else {
+			std::cout << "\x1b[1;31mdid not successfully retrieve elements of results2Buffer\x1b[0m" << std::endl;
+		}
+		glUnmapBuffer(GL_SHADER_STORAGE_BUFFER);
+
+		glBindBuffer(GL_SHADER_STORAGE_BUFFER, resultBuffer);
+		int* updatedData2 = (int*)glMapNamedBufferRange(resultBuffer, 0, sizeof(Vertex) * 2048, GL_MAP_READ_BIT);
+		
+		std::cout << "\x1b[1;31mtrying to retrieve contents of resultBuffer\x1b[0m" << std::endl;
+		if (updatedData2) {
+			for (int i = 0; i < 2; ++i) {
+				int value = updatedData2[i];
+				std::cout << "resultBuffer element " << i << ": " << value << std::endl;
+			}
+		}
+		else {
+			std::cout << "\x1b[1;31mdid not successfully retrieve elements of resultBuffer\x1b[0m" << std::endl;
+		}
+		glUnmapBuffer(GL_SHADER_STORAGE_BUFFER);
+		raycast_prog.disable(ctx);
 	}
 
 	void draw_cube(context& ctx) {
@@ -423,15 +448,18 @@ public:
 
 	void draw(cgv::render::context& ctx)
 	{
-		if (one_tap_press && !one_tap_flag) {
-			one_tap_press = !one_tap_press;
-			one_tap_flag = true;
+		if (one_tap_press != one_tap_flag) {
+			//executed_compute_shader = true;
 			talk_to_compute_shader(ctx);
 			talk_to_raycast_shader(ctx);
 			if (sP.size() > 0) {
 				// 99% of the time there are not 512*512 entries in sP; also size of elements in sP is 6 bytes
+				// usvec3 vector-> actual size of the array with : 512*512 * 6 bytes = 1572864 bytes = 1,5 mb
+				// Vertex array -> size is: 512*512 * 16 bytes = 4194304 bytes = 4mb
 				std::cout << "sizeof elements in sP " << sizeof(sP[0]) << ", and size of sP: " << sP.size() << std::endl;
+				std::cout << "sizeof Vertex " << sizeof(Vertex) << std::endl;
 			}
+			one_tap_flag = one_tap_press;
 		}
 		if (!pr.ref_prog().is_linked())
 			return;
@@ -469,7 +497,10 @@ public:
 			if (pr.do_geometry_less_rendering())
 				depth_tex.disable(ctx); 
 			}
-		draw_cube(ctx);
+
+		if (simple_cube) {
+			draw_cube(ctx);
+		}
 		glEnable(GL_CULL_FACE);
 	}
 };

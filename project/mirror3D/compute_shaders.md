@@ -41,7 +41,17 @@ std::iota(std::begin(data), std::end(data), 1);
 glBufferData(GL_SHADER_STORAGE_BUFFER, sizeof(data), data, GL_DYNAMIC_COPY);
 glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 0, input_buffer);
 ```
+## [`glGenBuffers(GLsize n, GLuint * buffers)`](https://registry.khronos.org/OpenGL-Refpages/gl4/html/glGenBuffers.xhtml)
+following command creates **n** buffer objects and stores them in the **buffers** array
+```cpp
+glGenBuffers(1, &input_buffer);
+```
 
+## [`glBufferData`]((https://registry.khronos.org/OpenGL-Refpages/gl4/html/glBufferData.xhtml))*`(GLenum target, GLsizeiptr size, const void * data, GLenum usage)`*
+following command creates and initializes a buffer object's data store
+```cpp
+glBufferData(GL_SHADER_STORAGE_BUFFER, size_of_data, data, GL_STATIC_DRAW);
+```
 # sending data to be computed in the shader
 ```cpp
 compute_prog.enable(ctx);
@@ -50,4 +60,30 @@ glMemoryBarrier(GL_SHADER_STORAGE_BARRIER_BIT);
 int* updatedData = (int*)glMapBufferRange(GL_SHADER_STORAGE_BUFFER, 0, sizeof(data), GL_MAP_READ_BIT);
 glUnmapBuffer(GL_SHADER_STORAGE_BUFFER);
 compute_prog.disable(ctx);
+```
+
+# retrieving data from compute shaders
+## [`void *glMapNamedBufferRange( 	GLuint buffer, GLintptr offset, GLsizeiptr length,	GLbitfield access);`](https://registry.khronos.org/OpenGL-Refpages/gl4/html/glMapBufferRange.xhtml)
+map all or part of a buffer object's data store into the client's address space
+
+# working with multiple buffers
+1. looks like we have to bind a buffer
+2. map it into our adress space on the CPU
+3. do something with data which is accessed at the pointer received from glMapBuffer
+4. bind the buffer again
+5. unmap the buffer
+```cpp
+glBindBuffer (GL_ARRAY_BUFFER, b0);
+void *data0 = glMapBuffer (GL_ARRAY_BUFFER, GL_WRITE_ONLY);
+glBindBuffer (GL_ARRAY_BUFFER, b1);
+void *data1 = glMapBuffer (GL_ARRAY_BUFFER, GL_WRITE_ONLY);
+glBindBuffer (GL_ARRAY_BUFFER, 0);
+
+// do interesting and/or exciting stuff with data0 and data1
+
+glBindBuffer (GL_ARRAY_BUFFER, b0);
+glUnmapBuffer (GL_ARRAY_BUFFER);
+glBindBuffer (GL_ARRAY_BUFFER, b1);
+glUnmapBuffer (GL_ARRAY_BUFFER);
+glBindBuffer (GL_ARRAY_BUFFER, 0);
 ```

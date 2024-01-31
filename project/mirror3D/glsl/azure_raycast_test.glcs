@@ -24,7 +24,7 @@ struct Vertex{
 	uint colors;
 };
 
-layout(std430, binding = 1) buffer ssTargetBuffer{
+layout(std430, binding = 4) buffer ssTargetBuffer{
 	Vertex points[];
 };
 
@@ -35,11 +35,11 @@ struct results {
 
 //results
 
-layout(std430, binding = 2) buffer ssResultBuffer{
+layout(std430, binding = 6) buffer ssResultBuffer{
 	uint best_group_ix; //points to group with best result
 };
 
-layout(std430, binding = 3) buffer ssResults2Buffer{
+layout(std430, binding = 8) buffer ssResults2Buffer{
 	results group_results[]; //stores best result of every working group
 };
 
