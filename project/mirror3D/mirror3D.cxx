@@ -199,7 +199,13 @@ public:
 			std::cout << " -> " << (depth_frame.device_time_stamp - color_frame.device_time_stamp) * 1e-6;
 			std::cout << "depth frame ";
 			std::cout << std::endl;
+
+			// color_frame is using 4 bytes per pixel with 2048x1536 in BGR32 format - which wastes one color channel
+			// depth_frame is using 2 bytes per pixel DEP16 - probably double precision integer
+			std::cout << "color_frame_size:" << color_frame.buffer_size << "color_frame_resolution:" << color_frame << " depthframesize: " << depth_frame.buffer_size << "depth_frame_resolution:" << depth_frame << std::endl;
 		}
+
+		
 		
 		post_redraw();
 	}
@@ -270,7 +276,7 @@ public:
 		// add own shader code -> build glpr in the current folder
 
 		// https://www.khronos.org/opengl/wiki/Compute_Shader
-		init_compute_shader(ctx);
+		init_dummy_compute_shader(ctx);
 		init_raycast_compute_shader(ctx);
 		material.set_diffuse_reflectance(rgb(0.7f, 0.2f, 0.4f));
 
@@ -286,6 +292,7 @@ public:
 			on_set_base(&is_running, *this);
 		}
 		glDeleteBuffers(1, &input_buffer);
+		// TODO delete remaining buffers
 	}
 
 	// prints errors in debug builds if shader code is wrong
@@ -308,7 +315,7 @@ public:
 		}
 	}
 
-	void init_compute_shader(context& ctx) {
+	void init_dummy_compute_shader(context& ctx) {
 		// TODO: delete Buffer
 		if (!compute_prog.is_created())
 			compute_prog.build_program(ctx, "compute_test.glpr", true);
@@ -319,7 +326,7 @@ public:
 		glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 0, input_buffer);
 	}
 
-	void talk_to_compute_shader(cgv::render::context& ctx) {
+	void update_dummy_compute_shader(cgv::render::context& ctx) {
 		
 		// calculate
 			compute_prog.enable(ctx);
@@ -343,13 +350,12 @@ public:
 		std::cout << (raycast_prog.is_linked() ? "raycast_prog is linked" : "raycast_prog is not linked") << std::endl;
 		
 		std::cout << "after build" << std::endl;
-		
-		// upload initial vertex buffer with size should be 16 bytes * 512 * 512 = 1572864 bytes
+
 		glGenBuffers(1, &vertexBuffer);
 		glBindBuffer(GL_SHADER_STORAGE_BUFFER, vertexBuffer);
-		glBufferData(GL_SHADER_STORAGE_BUFFER, 4194304, vertices, GL_STATIC_DRAW);
+		glBufferData(GL_SHADER_STORAGE_BUFFER, sizeof(Vertex) * 512 * 512, nullptr, GL_STATIC_DRAW);
 
-		glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 4, vertexBuffer);
+		glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 1, vertexBuffer);
 
 		glGenBuffers(1, &resultBuffer);
 		glBindBuffer(GL_SHADER_STORAGE_BUFFER, resultBuffer);
@@ -357,12 +363,12 @@ public:
 		// 8192 is 512 * 512 / 32 for depth image size divided by workload
 		// only read since this is a result buffer
 		glBufferData(GL_SHADER_STORAGE_BUFFER, sizeof(Vertex)*2048, nullptr, GL_DYNAMIC_READ);
-		glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 6, resultBuffer);
+		glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 2, resultBuffer);
 		glGenBuffers(1, &results2Buffer);
 		glBindBuffer(GL_SHADER_STORAGE_BUFFER, results2Buffer);
 		// uint + float * work group
 		glBufferData(GL_SHADER_STORAGE_BUFFER, (sizeof(unsigned int) + sizeof(float)) * 2048, nullptr, GL_DYNAMIC_READ);
-		glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 8, results2Buffer);
+		glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 3, results2Buffer);
 	}
 
 	void talk_to_raycast_shader(cgv::render::context& ctx) {
@@ -370,12 +376,26 @@ public:
 		// Set uniform values
 		raycast_prog.set_uniform(ctx, "sphere_radius", 0.02);
 		raycast_prog.set_uniform(ctx, "ray_direction", vec4(0, 1, 0, 1)); // pls change to vertex buffer containing constructed points
-		//raycast_prog.set_uniform(ctx, "ray_origin", vec4(0,0,0)); // pls change to vertex buffer containing constructed points
-		
-		glDispatchCompute(sizeof(512*512), 1, 1);
+		glBindBuffer(GL_SHADER_STORAGE_BUFFER, vertexBuffer);
+		glBufferSubData(GL_SHADER_STORAGE_BUFFER, 0, sizeof(vertices), vertices);
+
+		glDispatchCompute(512 * 512, 1, 1);
 		glMemoryBarrier(GL_SHADER_STORAGE_BARRIER_BIT);
 
 		// retrieve data from buffer
+		int* updatedData0 = (int*)glMapBufferRange(GL_SHADER_STORAGE_BUFFER, 0, sizeof(vertices), GL_MAP_READ_BIT);
+		std::cout << "\x1b[1;31mtrying to retrieve contents of vertexBuffer\x1b[0m" << std::endl;
+		if (updatedData0) {
+			for (int i = 0; i < 10; ++i) {
+				int value = updatedData0[i];
+				std::cout << "vertexBuffer element " << i << ": " << value << std::endl;
+			}
+		}
+		else {
+			std::cout << "\x1b[1;31mdid not successfully retrieve elements of results2Buffer\x1b[0m" << std::endl;
+		}
+		glUnmapBuffer(GL_SHADER_STORAGE_BUFFER);
+
 		glBindBuffer(GL_SHADER_STORAGE_BUFFER, results2Buffer);
 		int* updatedData = (int*)glMapNamedBufferRange(results2Buffer, 0, (sizeof(unsigned int) + sizeof(float)) * 2048, GL_MAP_READ_BIT);
 		std::cout << "\x1b[1;31mtrying to retrieve contents of results2Buffer\x1b[0m" << std::endl;
@@ -437,6 +457,7 @@ public:
 				else
 					// TODO: use own function to avoid pushback : alternatively use own construct function (without pushback)
 					rgbd::construct_rgbd_render_data(depth_frame, sP);
+					
 			}
 	}
 
@@ -444,9 +465,10 @@ public:
 	{
 		if (one_tap_press != one_tap_flag) {
 			//executed_compute_shader = true;
-			talk_to_compute_shader(ctx);
+			update_dummy_compute_shader(ctx);
 			talk_to_raycast_shader(ctx);
 			if (sP.size() > 0) {
+				// slow approach - sP only updated without geometry_less_rendering 
 				// 99% of the time there are not 512*512 entries in sP; also size of elements in sP is 6 bytes
 				// usvec3 vector-> actual size of the array with : 512*512 * 6 bytes = 1572864 bytes = 1,5 mb
 				// Vertex array -> size is: 512*512 * 16 bytes = 4194304 bytes = 4mb
@@ -483,7 +505,7 @@ public:
 			pr.ref_prog().set_uniform(ctx, "discard_dst", discard);
 			pr.ref_prog().set_uniform(ctx, "construct_quads", construct_quads);
 			pr.ref_prog().set_uniform(ctx, "render_quads", render_quads);
-			pr.draw(ctx, 0, sP.size());
+			pr.draw(ctx, 0, sP.size()); // only using sP size with geometryless rendering
 			
 			pr.disable(ctx);
 			if (pr.do_lookup_color())
