@@ -292,7 +292,6 @@ public:
 			on_set_base(&is_running, *this);
 		}
 		glDeleteBuffers(1, &input_buffer);
-		// TODO delete remaining buffers
 	}
 
 	// prints errors in debug builds if shader code is wrong
@@ -433,7 +432,7 @@ public:
 		ctx.push_modelview_matrix();
 		ctx.set_color(rgb(0, 1, 0.2f));
 		ctx.mul_modelview_matrix(cgv::math::scale4<double>(0.1, 0.1, 0.1));
-		ctx.tesselate_unit_cube();
+		ctx.tesselate_unit_cube(); // alternatively tesselate camera
 		ctx.pop_modelview_matrix();
 		ctx.ref_surface_shader_program().disable(ctx);
 	}
@@ -457,7 +456,6 @@ public:
 				else
 					// TODO: use own function to avoid pushback : alternatively use own construct function (without pushback)
 					rgbd::construct_rgbd_render_data(depth_frame, sP);
-					
 			}
 	}
 
@@ -506,7 +504,6 @@ public:
 			pr.ref_prog().set_uniform(ctx, "construct_quads", construct_quads);
 			pr.ref_prog().set_uniform(ctx, "render_quads", render_quads);
 			pr.draw(ctx, 0, sP.size()); // only using sP size with geometryless rendering
-			
 			pr.disable(ctx);
 			if (pr.do_lookup_color())
 				color_tex.disable(ctx);
