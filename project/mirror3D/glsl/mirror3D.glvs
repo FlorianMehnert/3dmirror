@@ -64,15 +64,6 @@ out POINT_GS {
 	bool is_correct;
 } vo;
 
-//out LINE_GS {
-//  vec4 color;
-//  vec4 halo_color;
-//	float halo_width_in_pixel;
-//	float percentual_halo_width;
-//	float depth_offset;
-//	vec3 adjacentPositions[4];
-//} vo;
-
 void main()
 {
 	ivec2 xp = position.xy;

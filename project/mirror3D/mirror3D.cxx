@@ -14,6 +14,11 @@
 #include <chrono>
 #include <numeric>
 
+// only temporary for variance of depth frame
+#include <iostream>
+#include <vector>
+#include <cmath>
+
 // specifically for mirror3D plugin
 #include <mirror3D.h>
 #include <frame.h>
@@ -26,10 +31,6 @@
 
 using namespace cgv::render;
 using namespace cgv;
-
-//#include <cgv_gl/point_renderer.h>
-
-//#include <cgv_gl/gl/gl.h>
 
 struct Vertex {
 	float x;
@@ -437,6 +438,54 @@ public:
 		ctx.ref_surface_shader_program().disable(ctx);
 	}
 
+	// find depth extent
+	std::pair<unsigned short, unsigned short> find_extent() {
+		unsigned int smallest_non_zero = 127;
+		unsigned int largest_finite = 1;
+
+		for (unsigned short depth : depth_frame.frame_data) {
+			// Check if depth is not zero and update smallestNonZero
+			if (depth > 1 && depth < smallest_non_zero) {
+				smallest_non_zero = depth;
+			}
+
+			// Check if depth is finite and update largestFinite
+			if (depth < 127 && depth > largest_finite) {
+				largest_finite = depth;
+			}
+		}
+		std::cout << smallest_non_zero << " " << largest_finite << std::endl;
+
+		return std::make_pair(smallest_non_zero, largest_finite);
+	}
+
+	void calc_variance() {
+		double mean = std::accumulate(std::begin(depth_frame.frame_data), std::end(depth_frame.frame_data), 0.0) / depth_frame.buffer_size;
+
+		// Calculate the sum of squared differences from the mean
+		double sumSquaredDiff = 0.0;
+		for (auto value : depth_frame.frame_data) {
+			double diff = value - mean;
+			sumSquaredDiff += diff * diff;
+		}
+
+		// Calculate the variance
+		double variance = sumSquaredDiff / (depth_frame.buffer_size - 1);
+
+		std::cout << variance << std::endl;
+	}
+
+	void iterate_over_depth_frame() {
+		for (int i = 0; i < 512; i++) {
+			for (int j = 0; i < 512; j++) {
+				unsigned int data = depth_frame.frame_data[i * 512 + j];
+				if (data != 0) {
+					std::cout << data << " ";
+				} 
+			}
+		}
+	}
+
 	void init_frame(cgv::render::context& ctx)
 	{
 			if (!view_ptr)
@@ -447,6 +496,8 @@ public:
 			}
 			if (depth_frame_changed) {
 				create_or_update_texture_from_frame(ctx, depth_tex, depth_frame);
+				//iterate_over_depth_frame();
+				find_extent();
 			}
 			if (!pr.do_geometry_less_rendering()) {
 				if (!pr.do_lookup_color()) {
