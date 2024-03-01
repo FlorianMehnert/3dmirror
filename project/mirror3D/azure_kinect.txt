@@ -1,0 +1,15 @@
+calibration
+optical center in pixel units c:255.251 258.7 
+distortion center dc:0 0 
+internal calibration k:000002B496AEBD70 
+max radius allowed for projection max_radius:1.74 
+internal calibration p:000002B496AEBDA0 
+external calibration pose:1 0 0 0 \ 0 1 0 0\ 0 0 1 0 
+focal length in pixel units s:251.492 251.568 
+skew strength skew 0 28 126
+
+used mode as dictated by https://learn.microsoft.com/en-us/azure/kinect-dk/hardware-specification
+mode is 3 which is k4a_depth_mode_wfov_2x2binned which is height 512x512
+- 120°x120°
+- 0,5,15,30 fps
+- 0.25 - 2.88 m

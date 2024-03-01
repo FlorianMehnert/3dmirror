@@ -432,8 +432,55 @@ public:
 		ctx.set_material(material);
 		ctx.push_modelview_matrix();
 		ctx.set_color(rgb(0, 1, 0.2f));
-		ctx.mul_modelview_matrix(cgv::math::scale4<double>(0.1, 0.1, 0.1));
-		ctx.tesselate_unit_cube(); // alternatively tesselate camera
+		ctx.mul_modelview_matrix(cgv::math::scale4<double>(1.0, 1.0, 2.8));
+		static float V[8 * 3] = {
+		-1,-1,+1,
+		+1,-1,+1,
+		-1,+1,+1,
+		+1,+1,+1,
+		-1,-1,-1,
+		+1,-1,-1,
+		-1,+1,-1,
+		+1,+1,-1
+		};
+
+		static float N[6 * 3] = {
+		-1,0,0, +1,0,0,
+		0,-1,0, 0,+1,0,
+		0,0,-1, 0,0,+1
+		};
+		static const float ot = float(1.0 / 3);
+		static const float tt = float(2.0 / 3);
+		static float T[14 * 2] = {
+			 0,ot , 0,tt ,
+			 0.25f,0 , 0.25f,ot ,
+			 0.25f,tt , 0.25f,1 ,
+			 0.5f,0 , 0.5f,ot ,
+			 0.5f,tt , 0.5f,1 ,
+			 0.75f,ot , 0.75f,tt ,
+			 1,ot , 1,tt
+		};
+		static int F[6 * 4] = {
+			0,2,6,4,
+			1,5,7,3,
+			0,4,5,1,
+			2,3,7,6,
+			4,6,7,5,
+			0,1,3,2
+		};
+		static int FN[6 * 4] = {
+			0,0,0,0, 1,1,1,1,
+			2,2,2,2, 3,3,3,3,
+			4,4,4,4, 5,5,5,5
+		};
+		static int FT[6 * 4] = {
+			3,4,1,0 ,7,10,11,8 ,
+			3,2,6,7 ,4,8,9,5 ,
+			12,13,11,10 ,3,7,8,4
+		};
+
+		//ctx.draw_faces(V, N, T, F, FN, FT, 6, 4, false);
+		ctx.draw_edges_of_faces(V, N, T, F, FN, FT, 6, 4, false);
 		ctx.pop_modelview_matrix();
 		ctx.ref_surface_shader_program().disable(ctx);
 	}
@@ -454,7 +501,6 @@ public:
 				largest_finite = depth;
 			}
 		}
-		std::cout << smallest_non_zero << " " << largest_finite << std::endl;
 
 		return std::make_pair(smallest_non_zero, largest_finite);
 	}
@@ -475,6 +521,109 @@ public:
 		std::cout << variance << std::endl;
 	}
 
+	const int TEXTURE_SIZE = 512;
+	int getIndex(int x, int y) {
+		return y * (TEXTURE_SIZE-1) + x;
+	}
+
+	struct Pair {
+		unsigned short first;
+		unsigned short second;
+	};
+
+	struct Point {
+		float x;
+		float y;
+		float z;
+	};
+
+	// iterate over texture from left to right, top to bottom and resepctively for right, top and bottom extent
+	void find_area_extent() {
+		int start = 0;
+		int end = TEXTURE_SIZE - 1;
+
+		// north, east, south, west
+		float extents[4] = { 0,0,0,0 };
+		
+		// Check top edge
+		unsigned short i = 0, j = 0;
+		float kinect_point[3];
+		bool found_point = false;
+		for (j = 0; j < end; ++j) {
+			for (i = 0; i < end; ++i) {
+				this->rgbd_inp.map_depth_to_point(i,j, depth_frame.frame_data[getIndex(i,j)], kinect_point);
+				if (kinect_point[0] || kinect_point[1] || kinect_point[2]) {
+					extents[0] = kinect_point[1];
+					break;
+				}		
+			}
+			if (kinect_point[0] || kinect_point[1] || kinect_point[2]) {
+				extents[0] = kinect_point[1];
+				break;
+			}
+		}
+
+		// Check right edge
+		for (i = end; i > 0; --i) {
+			for (j = 0; j < end; ++j) {
+				this->rgbd_inp.map_depth_to_point(i, j, depth_frame.frame_data[getIndex(i, j)], kinect_point);
+				if (kinect_point[0] || kinect_point[1] || kinect_point[2]) {
+					extents[1] = kinect_point[0];
+					break;
+				}
+			}
+			if (kinect_point[0] || kinect_point[1] || kinect_point[2]) {
+				extents[0] = kinect_point[1];
+				break;
+			}
+		}
+
+		// Check bottom edge
+		for (j = end; j > 0; --j) {
+			for (i = end; i > 0; --i) {
+				this->rgbd_inp.map_depth_to_point(i, j, depth_frame.frame_data[getIndex(i, j)], kinect_point);
+				if (kinect_point[0] || kinect_point[1] || kinect_point[2]) {
+					extents[2] = kinect_point[1];
+					break;
+				}
+			}
+			if (kinect_point[0] || kinect_point[1] || kinect_point[2]) {
+				extents[0] = kinect_point[1];
+				break;
+			}
+		}
+
+		// Check left edge
+		for (int i = 0; i < end; ++i) {
+			for (int j = 0; j < end; ++j) {
+				this->rgbd_inp.map_depth_to_point(i, j, depth_frame.frame_data[getIndex(i, j)], kinect_point);
+				if (kinect_point[0] || kinect_point[1] || kinect_point[2]) {
+					extents[3] = kinect_point[0];
+					break;
+				}
+			}
+			if (kinect_point[0] || kinect_point[1] || kinect_point[2]) {
+				extents[0] = kinect_point[1];
+				break;
+			}
+		}
+		
+		for (i = 0; i < 4; ++i) {
+			std::cout << extents[i] << " ";
+		}
+		std::cout << std::endl;
+	}
+
+	int* get_outer_pixel_depth() {
+		int corners[4];
+		corners[0] = depth_frame.frame_data[0];
+		corners[1] = depth_frame.frame_data[511];
+		corners[2] = depth_frame.frame_data[511*511];
+		corners[3] = depth_frame.frame_data[depth_frame.buffer_size-1];
+		std::cout << corners[0] << " " << corners[1] << " " << corners[2] << " " << corners[3] << std::endl;
+		return corners;
+	}
+
 	void iterate_over_depth_frame() {
 		for (int i = 0; i < 512; i++) {
 			for (int j = 0; i < 512; j++) {
@@ -484,6 +633,17 @@ public:
 				} 
 			}
 		}
+	}
+
+	void map_depth_to_point(int x,int y) {
+		float kinect_point[3];
+		this->rgbd_inp.map_depth_to_point(x, y, depth_frame.frame_data[getIndex(x,y)], kinect_point);
+		std::cout << "kinect point with x= " << x << " and y= " << y << " ";
+		for (float d : kinect_point)
+		{
+			std::cout << d << " ";
+		}
+		std::cout << std::endl;
 	}
 
 	void init_frame(cgv::render::context& ctx)
@@ -564,6 +724,7 @@ public:
 
 		if (simple_cube) {
 			draw_cube(ctx);
+			find_area_extent();
 		}
 		glEnable(GL_CULL_FACE);
 	}
