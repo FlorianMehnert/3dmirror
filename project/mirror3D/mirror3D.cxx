@@ -11,10 +11,12 @@
 #include <rgbd_render/rgbd_starter.h>
 #include <rgbd_render/rgbd_point_renderer.h>
 #include <cgv_gl/box_renderer.h>
+#include <cgv_gl/box_wire_renderer.h>
 #include <cgv/utils/pointer_test.h>
 #include <chrono>
 #include <numeric>
 #include <algorithm>
+
 
 // only temporary for variance of depth frame
 #include <iostream>
@@ -95,13 +97,13 @@ protected:
 	cgv::render::texture color;
 
 	rgbd_mesh_renderer pr;
-	box_renderer br;
 
 	// regarding frustum rendering
 	attribute_array_manager aam_frustum;
 	std::vector<cgv::box3> boxes;
 	std::vector<cgv::rgba> box_colors;
-	box_render_style brs;
+	//box_render_style brs;
+	box_wire_render_style brs;
 	float box_size = -0.999f;
 
 	shader_program compute_prog;
@@ -184,6 +186,10 @@ public:
 		std::cout << "started device " << rgbd_inp.get_serial() << std::endl;
 		std::cout << "\x1b[1;31mcolor\x1b[0m" << std::endl;
 		pr.set_calibration(calib);
+		std::cout << calib.depth_scale << " ";
+		std::cout << calib.depth.h << " ";
+		std::cout << calib.depth.w << " ";
+		std::cout << std::endl;
 	}
 
 	void on_new_frame(double t, rgbd::InputStreams new_frames) {
@@ -288,20 +294,21 @@ public:
 
 		// render points
 		cgv::render::ref_point_renderer(ctx, 1);
-		auto &R = cgv::render::ref_box_renderer(ctx, 1);
+		//auto &R = cgv::render::ref_box_renderer(ctx, 1);
+		cgv::render::ref_box_wire_renderer(ctx, 1);
 		
 		init_dummy_compute_shader(ctx);
 		//init_raycast_compute_shader(ctx);
 
-		return pr.init(ctx) && br.init(ctx);
+		return pr.init(ctx);
 	}
 	void clear(cgv::render::context& ctx)
 	{
 		cgv::render::ref_point_renderer(ctx, -1);
-		cgv::render::ref_box_renderer(ctx, -1);
+		//cgv::render::ref_box_renderer(ctx, -1);
+		cgv::render::ref_box_wire_renderer(ctx, -1);
 
 		pr.clear(ctx);
-		br.clear(ctx);
 		if (is_running) {
 			is_running = false;
 			on_set_base(&is_running, *this);
@@ -467,7 +474,7 @@ public:
 	}
 
 	const int TEXTURE_SIZE = 512;
-	int getIndex(int x, int y) {
+	int get_index(int x, int y) {
 		return y * (TEXTURE_SIZE-1) + x;
 	}
 
@@ -485,7 +492,7 @@ public:
 		bool found_point = false;
 		for (j = 0; j < end; ++j) {
 			for (i = 0; i < end; ++i) {
-				this->rgbd_inp.map_depth_to_point(i,j, depth_frame.frame_data[getIndex(i,j)], kinect_point);
+				this->rgbd_inp.map_depth_to_point(i,j, depth_frame.frame_data[get_index(i,j)], kinect_point);
 				if (kinect_point[0] || kinect_point[1] || kinect_point[2]) {
 					extents[0] = kinect_point[1];
 					break;
@@ -500,7 +507,7 @@ public:
 		// Check right edge
 		for (i = end; i > 0; --i) {
 			for (j = 0; j < end; ++j) {
-				this->rgbd_inp.map_depth_to_point(i, j, depth_frame.frame_data[getIndex(i, j)], kinect_point);
+				this->rgbd_inp.map_depth_to_point(i, j, depth_frame.frame_data[get_index(i, j)], kinect_point);
 				if (kinect_point[0] || kinect_point[1] || kinect_point[2]) {
 					extents[1] = kinect_point[0];
 					break;
@@ -515,7 +522,7 @@ public:
 		// Check bottom edge
 		for (j = end; j > 0; --j) {
 			for (i = end; i > 0; --i) {
-				this->rgbd_inp.map_depth_to_point(i, j, depth_frame.frame_data[getIndex(i, j)], kinect_point);
+				this->rgbd_inp.map_depth_to_point(i, j, depth_frame.frame_data[get_index(i, j)], kinect_point);
 				if (kinect_point[0] || kinect_point[1] || kinect_point[2]) {
 					extents[2] = kinect_point[1];
 					break;
@@ -530,7 +537,7 @@ public:
 		// Check left edge
 		for (int i = 0; i < end; ++i) {
 			for (int j = 0; j < end; ++j) {
-				this->rgbd_inp.map_depth_to_point(i, j, depth_frame.frame_data[getIndex(i, j)], kinect_point);
+				this->rgbd_inp.map_depth_to_point(i, j, depth_frame.frame_data[get_index(i, j)], kinect_point);
 				if (kinect_point[0] || kinect_point[1] || kinect_point[2]) {
 					extents[3] = kinect_point[0];
 					break;
@@ -572,10 +579,39 @@ public:
 		return corners;
 	}
 
+	
+	// return a raw depth value with given x and y on the pixel coordinates
+	// allow to search further in frame if current data is 0
+	uint16_t get_depth_value_by_position(int x, int y, bool return_non_zero, bool search_forward) {
+		if (x >= depth_frame.width || y >= depth_frame.height) {
+			return 0;
+		} else {
+			uint16_t data = (depth_frame.frame_data[x + y * depth_frame.width] << 8) | depth_frame.frame_data[x + y * depth_frame.width + 1];
+			if (return_non_zero && data == 0)
+				return get_depth_value_by_index(x + y * depth_frame.width + (search_forward ? 2 : -2), return_non_zero, search_forward, 0);
+			else
+				return data;
+		}		
+	}
+
+	// return a raw depth value with given index
+	// allow to search further in frame if current data is 0
+	uint16_t get_depth_value_by_index(int i, bool return_non_zero, bool search_forward, int recurse_level) {
+		if ((recurse_level > 999) || (search_forward ? (i >= depth_frame.width * depth_frame.height) : (i <= 2))) {
+			return (uint16_t) 0;
+		} else {
+			uint16_t data = (depth_frame.frame_data[i] << 8) | depth_frame.frame_data[i + 1];
+			if (return_non_zero && data == 0)
+				return get_depth_value_by_index(i + (search_forward ? 2 : -2), return_non_zero, search_forward, recurse_level + 1);
+			else
+				return data;
+		}
+	}
+
 	void iterate_over_depth_frame() {
 		for (int i = 0; i < 512; i++) {
 			for (int j = 0; i < 512; j++) {
-				unsigned int data = depth_frame.frame_data[i * 512 + j];
+				uint16_t data = (depth_frame.frame_data[i * 512 + j] << 8) | depth_frame.frame_data[i * 512 + j + 1];
 				if (data != 0) {
 					std::cout << data << " ";
 				} 
@@ -585,7 +621,7 @@ public:
 
 	void map_depth_to_point(int x,int y) {
 		float kinect_point[3];
-		this->rgbd_inp.map_depth_to_point(x, y, depth_frame.frame_data[getIndex(x,y)], kinect_point);
+		this->rgbd_inp.map_depth_to_point(x, y, depth_frame.frame_data[get_index(x,y)], kinect_point);
 		std::cout << "kinect point with x= " << x << " and y= " << y << " ";
 		for (float d : kinect_point)
 		{
@@ -675,17 +711,30 @@ public:
 			//draw_cube(ctx);
 			/*br.enable(ctx);
 			br.disable(ctx);*/
-			auto& R = cgv::render::ref_box_renderer(ctx);
+			//find_area_extent();
+
+			std::vector<char> dep_buffer = depth_frame.frame_data;
+
+			auto& R = cgv::render::ref_box_wire_renderer(ctx);
 			R.set_render_style(brs);
 			boxes.clear();
 			box_colors.clear();
-			boxes.push_back(cgv::dbox3(cgv::vec3(-1, -1, -1), cgv::vec3(1, 1, box_size)));
-			box_size += 0.001f;
-			box_colors.push_back(cgv::media::color<float, cgv::media::HLS, cgv::media::OPACITY>(1.0f, 0.5f, 1.0f, 0.5f));
+			uint16_t left_top = get_depth_value_by_position(0,0, true, true);
+			uint16_t right_bottom = get_depth_value_by_position(511,511, true, false);
+			bool color = left_top != 0 && right_bottom != 0;
+			std::cout << left_top << right_bottom << std::endl;
+			boxes.push_back(cgv::dbox3(cgv::vec3(-1, -1, left_top*0.002), cgv::vec3(1, 1, right_bottom*0.002)));
+			box_colors.push_back(cgv::media::color<float, cgv::media::HLS, cgv::media::OPACITY>(color ? 2.0f : 1.0f, color ? 0 : 0.5f, 1.0f, 1.0f));
 			R.set_box_array(ctx, boxes);
 			R.set_color_array(ctx, box_colors);
 			R.render(ctx, 0, boxes.size());
-			
+		}
+		else {
+			//iterate_over_depth_frame();
+			std::cout << depth_frame.width << depth_frame.height << std::endl;
+			for (int i = 0; i < depth_frame.buffer_size / 2; ++i) {
+				std::cout << ((uint16_t)(depth_frame.frame_data[i] << 8) | depth_frame.frame_data[i + 1]) << std::endl;
+			}
 		}
 		glEnable(GL_CULL_FACE);
 	}
