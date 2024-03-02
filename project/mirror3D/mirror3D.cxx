@@ -10,9 +10,11 @@
 #include <rgbd_render/rgbd_render.h>
 #include <rgbd_render/rgbd_starter.h>
 #include <rgbd_render/rgbd_point_renderer.h>
+#include <cgv_gl/box_renderer.h>
 #include <cgv/utils/pointer_test.h>
 #include <chrono>
 #include <numeric>
+#include <algorithm>
 
 // only temporary for variance of depth frame
 #include <iostream>
@@ -47,9 +49,7 @@ class rgbd_mesh_renderer :
 	public rgbd::rgbd_point_renderer
 {
 public:
-	
 	bool build_shader_program(cgv::render::context& ctx, cgv::render::shader_program& prog, const cgv::render::shader_define_map& defines) override;
-	
 };
 
 bool rgbd_mesh_renderer::build_shader_program(cgv::render::context& ctx, cgv::render::shader_program& prog, const cgv::render::shader_define_map& defines) {
@@ -94,9 +94,15 @@ protected:
 	// texture, shaders and display lists
 	cgv::render::texture color;
 
-	// default point renderer
-	//rgbd::rgbd_point_renderer pr;
 	rgbd_mesh_renderer pr;
+	box_renderer br;
+
+	// regarding frustum rendering
+	attribute_array_manager aam_frustum;
+	std::vector<cgv::box3> boxes;
+	std::vector<cgv::rgba> box_colors;
+	box_render_style brs;
+	float box_size = -0.999f;
 
 	shader_program compute_prog;
 	shader_program raycast_prog;
@@ -141,9 +147,8 @@ protected:
 	bool one_tap_press = false;
 	bool one_tap_flag = false;
 	
-	// for simple cube
-	cgv::media::illum::surface_material material;
-
+	std::array<float, 4> camera_edges;
+	std::array<cgv::vec3, 4> camera_corners;
 
 public:
 	mirror3D() : color_tex("uint8[R,G,B]"), depth_tex("uint16[R]")
@@ -154,6 +159,7 @@ public:
 		pr.configure_invalid_color_handling(true, rgba(1, 0, 1, 1));
 		prs.point_size = 5;
 		prs.blend_width_in_pixel = 0;
+
 
 	}
 	void on_set(void* member_ptr)
@@ -169,14 +175,17 @@ public:
 		post_redraw();
 	}
 	std::string get_type_name() const { return "mirror3D"; }
+	
 	void on_attach() {
 		std::cout << "attached to " << rgbd_inp.get_serial() << std::endl;
 	}
+
 	void on_start() {
 		std::cout << "started device " << rgbd_inp.get_serial() << std::endl;
 		std::cout << "\x1b[1;31mcolor\x1b[0m" << std::endl;
 		pr.set_calibration(calib);
 	}
+
 	void on_new_frame(double t, rgbd::InputStreams new_frames) {
 		auto now_h = std::chrono::high_resolution_clock::now();
 		// construct copy of new frames
@@ -205,18 +214,18 @@ public:
 			// depth_frame is using 2 bytes per pixel DEP16 - probably double precision integer
 			std::cout << "color_frame_size:" << color_frame.buffer_size << "color_frame_resolution:" << color_frame << " depthframesize: " << depth_frame.buffer_size << "depth_frame_resolution:" << depth_frame << std::endl;
 		}
-
-		
-		
 		post_redraw();
 	}
+
 	void on_stop() {
 		std::cout << "stopped device " << rgbd_inp.get_serial() << std::endl;
 	}
+
 	void stream_help(std::ostream& os)
 	{
 		os << "mirror3D: toggle capture with <Space>" << std::endl;
 	}
+	
 	bool handle(cgv::gui::event& e)
 	{
 		if (e.get_kind() != cgv::gui::EID_KEY)
@@ -261,38 +270,48 @@ public:
 			align("\a");
 			end_tree_node(prs);
 		}
+
+		if (begin_tree_node("box style", brs)) {
+			align("\a");
+			create_gui_base(this, *this);
+			add_gui("box style", brs);
+			align("\a");
+			end_tree_node(prs);
+		}
 		
 	}
 	bool init(cgv::render::context& ctx)
 	{
 		start_first_device();
 		ctx.set_bg_clr_idx(4);
-		
+		aam_frustum.init(ctx);
+
 		// render points
 		cgv::render::ref_point_renderer(ctx, 1);
+		auto &R = cgv::render::ref_box_renderer(ctx, 1);
 		
-		// something with compute shaders
-		// cgv::render::ref_clod_point_renderer(ctx, 1);
-		
-		// add own shader code -> build glpr in the current folder
-
-		// https://www.khronos.org/opengl/wiki/Compute_Shader
 		init_dummy_compute_shader(ctx);
-		init_raycast_compute_shader(ctx);
-		material.set_diffuse_reflectance(rgb(0.7f, 0.2f, 0.4f));
+		//init_raycast_compute_shader(ctx);
 
-		return pr.init(ctx);
+		return pr.init(ctx) && br.init(ctx);
 	}
 	void clear(cgv::render::context& ctx)
 	{
 		cgv::render::ref_point_renderer(ctx, -1);
+		cgv::render::ref_box_renderer(ctx, -1);
 
 		pr.clear(ctx);
+		br.clear(ctx);
 		if (is_running) {
 			is_running = false;
 			on_set_base(&is_running, *this);
 		}
+		aam_frustum.destruct(ctx);
 		glDeleteBuffers(1, &input_buffer);
+		glDeleteBuffers(1, &points);
+		glDeleteBuffers(1, &vertexBuffer);
+		glDeleteBuffers(1, &resultBuffer);
+		glDeleteBuffers(1, &results2Buffer);
 	}
 
 	// prints errors in debug builds if shader code is wrong
@@ -427,65 +446,7 @@ public:
 		raycast_prog.disable(ctx);
 	}
 
-	void draw_cube(context& ctx) {
-		ctx.ref_surface_shader_program().enable(ctx);
-		ctx.set_material(material);
-		ctx.push_modelview_matrix();
-		ctx.set_color(rgb(0, 1, 0.2f));
-		ctx.mul_modelview_matrix(cgv::math::scale4<double>(1.0, 1.0, 2.8));
-		static float V[8 * 3] = {
-		-1,-1,+1,
-		+1,-1,+1,
-		-1,+1,+1,
-		+1,+1,+1,
-		-1,-1,-1,
-		+1,-1,-1,
-		-1,+1,-1,
-		+1,+1,-1
-		};
-
-		static float N[6 * 3] = {
-		-1,0,0, +1,0,0,
-		0,-1,0, 0,+1,0,
-		0,0,-1, 0,0,+1
-		};
-		static const float ot = float(1.0 / 3);
-		static const float tt = float(2.0 / 3);
-		static float T[14 * 2] = {
-			 0,ot , 0,tt ,
-			 0.25f,0 , 0.25f,ot ,
-			 0.25f,tt , 0.25f,1 ,
-			 0.5f,0 , 0.5f,ot ,
-			 0.5f,tt , 0.5f,1 ,
-			 0.75f,ot , 0.75f,tt ,
-			 1,ot , 1,tt
-		};
-		static int F[6 * 4] = {
-			0,2,6,4,
-			1,5,7,3,
-			0,4,5,1,
-			2,3,7,6,
-			4,6,7,5,
-			0,1,3,2
-		};
-		static int FN[6 * 4] = {
-			0,0,0,0, 1,1,1,1,
-			2,2,2,2, 3,3,3,3,
-			4,4,4,4, 5,5,5,5
-		};
-		static int FT[6 * 4] = {
-			3,4,1,0 ,7,10,11,8 ,
-			3,2,6,7 ,4,8,9,5 ,
-			12,13,11,10 ,3,7,8,4
-		};
-
-		//ctx.draw_faces(V, N, T, F, FN, FT, 6, 4, false);
-		ctx.draw_edges_of_faces(V, N, T, F, FN, FT, 6, 4, false);
-		ctx.pop_modelview_matrix();
-		ctx.ref_surface_shader_program().disable(ctx);
-	}
-
-	// find depth extent
+	// return range of depth values
 	std::pair<unsigned short, unsigned short> find_extent() {
 		unsigned int smallest_non_zero = 127;
 		unsigned int largest_finite = 1;
@@ -505,37 +466,10 @@ public:
 		return std::make_pair(smallest_non_zero, largest_finite);
 	}
 
-	void calc_variance() {
-		double mean = std::accumulate(std::begin(depth_frame.frame_data), std::end(depth_frame.frame_data), 0.0) / depth_frame.buffer_size;
-
-		// Calculate the sum of squared differences from the mean
-		double sumSquaredDiff = 0.0;
-		for (auto value : depth_frame.frame_data) {
-			double diff = value - mean;
-			sumSquaredDiff += diff * diff;
-		}
-
-		// Calculate the variance
-		double variance = sumSquaredDiff / (depth_frame.buffer_size - 1);
-
-		std::cout << variance << std::endl;
-	}
-
 	const int TEXTURE_SIZE = 512;
 	int getIndex(int x, int y) {
 		return y * (TEXTURE_SIZE-1) + x;
 	}
-
-	struct Pair {
-		unsigned short first;
-		unsigned short second;
-	};
-
-	struct Point {
-		float x;
-		float y;
-		float z;
-	};
 
 	// iterate over texture from left to right, top to bottom and resepctively for right, top and bottom extent
 	void find_area_extent() {
@@ -612,6 +546,20 @@ public:
 			std::cout << extents[i] << " ";
 		}
 		std::cout << std::endl;
+		for (int i = 0; i < 4; ++i)
+			this->camera_edges[i] = extents[i];
+	}
+
+	void get_outer_points() {
+		float top = this->camera_edges[0];
+		float right = this->camera_edges[1];
+		float bottom = this->camera_edges[2];
+		float left = this->camera_edges[3];
+
+		this->camera_corners[0] = cgv::vec3(left, top, 1); // top left
+		this->camera_corners[1] = cgv::vec3(right, top, 1); // top right
+		this->camera_corners[2] = cgv::vec3(left, bottom, 1); // bottom left
+		this->camera_corners[3] = cgv::vec3(right, bottom, 1); // bottom right
 	}
 
 	int* get_outer_pixel_depth() {
@@ -675,7 +623,7 @@ public:
 		if (one_tap_press != one_tap_flag) {
 			//executed_compute_shader = true;
 			update_dummy_compute_shader(ctx);
-			talk_to_raycast_shader(ctx);
+			//talk_to_raycast_shader(ctx);
 			if (sP.size() > 0) {
 				// slow approach - sP only updated without geometry_less_rendering 
 				// 99% of the time there are not 512*512 entries in sP; also size of elements in sP is 6 bytes
@@ -721,10 +669,23 @@ public:
 			if (pr.do_geometry_less_rendering())
 				depth_tex.disable(ctx); 
 			}
+		
 
 		if (simple_cube) {
-			draw_cube(ctx);
-			find_area_extent();
+			//draw_cube(ctx);
+			/*br.enable(ctx);
+			br.disable(ctx);*/
+			auto& R = cgv::render::ref_box_renderer(ctx);
+			R.set_render_style(brs);
+			boxes.clear();
+			box_colors.clear();
+			boxes.push_back(cgv::dbox3(cgv::vec3(-1, -1, -1), cgv::vec3(1, 1, box_size)));
+			box_size += 0.001f;
+			box_colors.push_back(cgv::media::color<float, cgv::media::HLS, cgv::media::OPACITY>(1.0f, 0.5f, 1.0f, 0.5f));
+			R.set_box_array(ctx, boxes);
+			R.set_color_array(ctx, box_colors);
+			R.render(ctx, 0, boxes.size());
+			
 		}
 		glEnable(GL_CULL_FACE);
 	}
