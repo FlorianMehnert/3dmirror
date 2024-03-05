@@ -24,7 +24,6 @@
 #include <cmath>
 
 // specifically for mirror3D plugin
-#include <mirror3D.h>
 #include <frame.h>
 
 // constructing pointclouds
@@ -140,10 +139,12 @@ protected:
 	bool construct_quads = true;
 	float distance = 5.0;
 	float discard = 0.02f;
+	float fdepth = 1.0f;
+	float farea = 1.0f;
 	bool render_quads = true;
 	bool depth_lookup = false;
 	bool flip_y = true;
-	bool simple_cube = true;
+	bool calculate_frustum = true;
 
 	// dispatch each time the button state is toggled
 	bool one_tap_press = false;
@@ -257,11 +258,14 @@ public:
 		add_member_control(this, "shader demo", shader_demo, "check");
 		add_member_control(this, "distance", distance, "value_slider", "min=0;max=10");
 		add_member_control(this, "discard_dst", discard, "value_slider", "min=0;max=1;step=0.01");
+		add_member_control(this, "frustum depth", fdepth, "value_slider", "min=0;max=10;step=0.01");
+		add_member_control(this, "frustum radius", farea, "value_slider", "min=0;max=5;step=0.01");
 		add_member_control(this, "construct quads", construct_quads, "check");
 		//add_member_control(this, "flip y", flip_y, "toggle", "w=66", " "); // should be doable in config file
 		add_member_control(this, "one time execution", one_tap_press, "toggle");
 		add_member_control(this, "render quads", render_quads, "check");
-		add_member_control(this, "show camera position", simple_cube, "check");
+		add_member_control(this, "show camera position", calculate_frustum, "check");
+
 		
 		if (begin_tree_node("capture", is_running)) {
 			align("\a");
@@ -477,86 +481,7 @@ public:
 	int get_index(int x, int y) {
 		return y * (TEXTURE_SIZE-1) + x;
 	}
-
-	// iterate over texture from left to right, top to bottom and resepctively for right, top and bottom extent
-	void find_area_extent() {
-		int start = 0;
-		int end = TEXTURE_SIZE - 1;
-
-		// north, east, south, west
-		float extents[4] = { 0,0,0,0 };
 		
-		// Check top edge
-		unsigned short i = 0, j = 0;
-		float kinect_point[3];
-		bool found_point = false;
-		for (j = 0; j < end; ++j) {
-			for (i = 0; i < end; ++i) {
-				this->rgbd_inp.map_depth_to_point(i,j, depth_frame.frame_data[get_index(i,j)], kinect_point);
-				if (kinect_point[0] || kinect_point[1] || kinect_point[2]) {
-					extents[0] = kinect_point[1];
-					break;
-				}		
-			}
-			if (kinect_point[0] || kinect_point[1] || kinect_point[2]) {
-				extents[0] = kinect_point[1];
-				break;
-			}
-		}
-
-		// Check right edge
-		for (i = end; i > 0; --i) {
-			for (j = 0; j < end; ++j) {
-				this->rgbd_inp.map_depth_to_point(i, j, depth_frame.frame_data[get_index(i, j)], kinect_point);
-				if (kinect_point[0] || kinect_point[1] || kinect_point[2]) {
-					extents[1] = kinect_point[0];
-					break;
-				}
-			}
-			if (kinect_point[0] || kinect_point[1] || kinect_point[2]) {
-				extents[0] = kinect_point[1];
-				break;
-			}
-		}
-
-		// Check bottom edge
-		for (j = end; j > 0; --j) {
-			for (i = end; i > 0; --i) {
-				this->rgbd_inp.map_depth_to_point(i, j, depth_frame.frame_data[get_index(i, j)], kinect_point);
-				if (kinect_point[0] || kinect_point[1] || kinect_point[2]) {
-					extents[2] = kinect_point[1];
-					break;
-				}
-			}
-			if (kinect_point[0] || kinect_point[1] || kinect_point[2]) {
-				extents[0] = kinect_point[1];
-				break;
-			}
-		}
-
-		// Check left edge
-		for (int i = 0; i < end; ++i) {
-			for (int j = 0; j < end; ++j) {
-				this->rgbd_inp.map_depth_to_point(i, j, depth_frame.frame_data[get_index(i, j)], kinect_point);
-				if (kinect_point[0] || kinect_point[1] || kinect_point[2]) {
-					extents[3] = kinect_point[0];
-					break;
-				}
-			}
-			if (kinect_point[0] || kinect_point[1] || kinect_point[2]) {
-				extents[0] = kinect_point[1];
-				break;
-			}
-		}
-		
-		for (i = 0; i < 4; ++i) {
-			std::cout << extents[i] << " ";
-		}
-		std::cout << std::endl;
-		for (int i = 0; i < 4; ++i)
-			this->camera_edges[i] = extents[i];
-	}
-
 	void get_outer_points() {
 		float top = this->camera_edges[0];
 		float right = this->camera_edges[1];
@@ -617,6 +542,50 @@ public:
 				} 
 			}
 		}
+	}
+
+	void trundcated_pyramid(cgv::render::context& ctx, float base_radius, float top_radius, float height) {
+		int segments = 4;
+		float angle_step = 2.0f * M_PI / segments;
+		std::array<vec3,8> vertices;
+
+		for (int i = 0; i < segments; ++i) {
+			float angle = i * angle_step;
+			float x = base_radius * cos(angle);
+			float y = base_radius * sin(angle);
+			vertices[i] = vec3(x * cos(M_PI / 4.0f) - y * sin(M_PI / 4.0f), x * sin(M_PI / 4.0f) + y * cos(M_PI / 4.0f), 0);
+		}
+
+		// generate vertices for top extent
+		for (int i = 0; i < segments; ++i) {
+			float angle = i * angle_step;
+			float x = top_radius * cos(angle);
+			float y = top_radius * sin(angle);
+			vertices[i + 4] = vec3(x * cos(M_PI / 4.0f) - y * sin(M_PI / 4.0f), x * sin(M_PI / 4.0f) + y * cos(M_PI / 4.0f), height);
+		}
+
+		static int F[4 * 4] = {
+			0, 1, 5, 4,
+			1, 2, 6, 5,
+			2, 3, 7, 6,
+			3, 0, 4, 7,
+		};
+
+		static int FN[6 * 4];
+		static float N[6 * 3];
+		
+		float V[8 * 3] = {
+			vertices[0][0], vertices[0][1], vertices[0][2],
+			vertices[1][0], vertices[1][1], vertices[1][2],
+			vertices[2][0], vertices[2][1], vertices[2][2],
+			vertices[3][0], vertices[3][1], vertices[3][2],
+			vertices[4][0], vertices[4][1], vertices[4][2],
+			vertices[5][0], vertices[5][1], vertices[5][2],
+			vertices[6][0], vertices[6][1], vertices[6][2],
+			vertices[7][0], vertices[7][1], vertices[7][2],
+		};
+
+		ctx.draw_edges_of_faces(V, N, 0, F, FN, 0, 4, 4, false);
 	}
 
 	void map_depth_to_point(int x,int y) {
@@ -707,12 +676,7 @@ public:
 			}
 		
 
-		if (simple_cube) {
-			//draw_cube(ctx);
-			/*br.enable(ctx);
-			br.disable(ctx);*/
-			//find_area_extent();
-
+		if (calculate_frustum) {
 			std::vector<char> dep_buffer = depth_frame.frame_data;
 
 			auto& R = cgv::render::ref_box_wire_renderer(ctx);
@@ -741,6 +705,14 @@ public:
 			R.set_box_array(ctx, boxes);
 			R.set_color_array(ctx, box_colors);
 			R.render(ctx, 0, boxes.size());
+		}
+		else {
+			ctx.ref_surface_shader_program().enable(ctx);
+			ctx.push_modelview_matrix();
+			ctx.set_color(cgv::rgb(0, 1, 0.2f));
+			trundcated_pyramid(ctx, 0, farea, fdepth);
+			ctx.pop_modelview_matrix();
+			ctx.ref_surface_shader_program().disable(ctx);
 		}
 		glEnable(GL_CULL_FACE);
 	}
