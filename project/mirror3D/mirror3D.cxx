@@ -719,22 +719,28 @@ public:
 			R.set_render_style(brs);
 			boxes.clear();
 			box_colors.clear();
-			uint16_t left_top = get_depth_value_by_position(0,0, true, true);
-			uint16_t right_bottom = get_depth_value_by_position(511,511, true, false);
+
+			vec2 lt = vec2(418,101);
+			vec2 rb = vec2(40, 360);
+			uint16_t left_top = get_depth_value_by_position(lt[0], lt[1], true, true);
+			uint16_t right_bottom = get_depth_value_by_position(rb[0], rb[1], true, false);
 			bool color = left_top != 0 && right_bottom != 0;
-			std::cout << left_top << right_bottom << std::endl;
-			boxes.push_back(cgv::dbox3(cgv::vec3(-1, -1, left_top*0.002), cgv::vec3(1, 1, right_bottom*0.002)));
+			std::cout << left_top << " " << right_bottom << std::endl;
+			
+
+			float a[3] = { 0,0,0 };
+			float b[3] = { 0,0,0 };
+			rgbd_inp.map_depth_to_point(lt[0], lt[1], left_top, a);
+			rgbd_inp.map_depth_to_point(rb[0], rb[1], left_top, b);
+			//boxes.push_back(cgv::dbox3(cgv::vec3(-1, -1, left_top * 0.00439453125), cgv::vec3(1, 1, right_bottom * 0.00439453125)));
+			boxes.push_back(cgv::dbox3(
+				cgv::vec3(a[0], a[1], a[2]),
+				cgv::vec3(b[0], b[1], b[2])
+			));
 			box_colors.push_back(cgv::media::color<float, cgv::media::HLS, cgv::media::OPACITY>(color ? 2.0f : 1.0f, color ? 0 : 0.5f, 1.0f, 1.0f));
 			R.set_box_array(ctx, boxes);
 			R.set_color_array(ctx, box_colors);
 			R.render(ctx, 0, boxes.size());
-		}
-		else {
-			//iterate_over_depth_frame();
-			std::cout << depth_frame.width << depth_frame.height << std::endl;
-			for (int i = 0; i < depth_frame.buffer_size / 2; ++i) {
-				std::cout << ((uint16_t)(depth_frame.frame_data[i] << 8) | depth_frame.frame_data[i + 1]) << std::endl;
-			}
 		}
 		glEnable(GL_CULL_FACE);
 	}
