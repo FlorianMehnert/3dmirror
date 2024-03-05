@@ -261,7 +261,6 @@ public:
 		add_member_control(this, "frustum depth", fdepth, "value_slider", "min=0;max=10;step=0.01");
 		add_member_control(this, "frustum radius", farea, "value_slider", "min=0;max=5;step=0.01");
 		add_member_control(this, "construct quads", construct_quads, "check");
-		//add_member_control(this, "flip y", flip_y, "toggle", "w=66", " "); // should be doable in config file
 		add_member_control(this, "one time execution", one_tap_press, "toggle");
 		add_member_control(this, "render quads", render_quads, "check");
 		add_member_control(this, "show camera position", calculate_frustum, "check");
@@ -556,7 +555,7 @@ public:
 			vertices[i] = vec3(x * cos(M_PI / 4.0f) - y * sin(M_PI / 4.0f), x * sin(M_PI / 4.0f) + y * cos(M_PI / 4.0f), 0);
 		}
 
-		// generate vertices for top extent
+		// generate vertices for top extent and rotate by 45 degrees
 		for (int i = 0; i < segments; ++i) {
 			float angle = i * angle_step;
 			float x = top_radius * cos(angle);
@@ -674,7 +673,6 @@ public:
 			if (pr.do_geometry_less_rendering())
 				depth_tex.disable(ctx); 
 			}
-		
 
 		if (calculate_frustum) {
 			std::vector<char> dep_buffer = depth_frame.frame_data;
@@ -691,7 +689,6 @@ public:
 			bool color = left_top != 0 && right_bottom != 0;
 			std::cout << left_top << " " << right_bottom << std::endl;
 			
-
 			float a[3] = { 0,0,0 };
 			float b[3] = { 0,0,0 };
 			rgbd_inp.map_depth_to_point(lt[0], lt[1], left_top, a);

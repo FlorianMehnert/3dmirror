@@ -22,28 +22,15 @@ void finish_fragment(vec4 color);
 void finish_fragment(vec4 color, float depth);
 //***** end interface of fragment.glfs ***********************************
 
-
-//***** begin interface of splat.glsl ***********************************
-vec4 compute_blended_color_with_halo(
-	in float percentual_radial_position,
-	in vec4 core_color, in float percentual_core_size,
-	in vec4 halo_color, in float percentual_point_size,
-	in float percentual_blend_width);
-//***** end interface of surface.glsl ***********************************
+//***** begin interface of holo_disp.glfs ***********************************
+void compute_sub_pixel_rays(out vec3 ro[3], out vec3 rd[3]);
+bool finalize_sub_pixel_fragment(in vec3 rgb, in vec3 depth);
+//***** end interface of holo_disp.glfs ***********************************
 
 void main()
 {
-	if (!render_quads){
-		float percentual_radial_position = length(fi.uv);
-		if (percentual_radial_position > fi.percentual_splat_size)
-			discard;
-
-		finish_fragment(compute_blended_color_with_halo(
-			percentual_radial_position, fi.color, fi.percentual_core_size,
-			vec4(mix(fi.color.rgb, fi.halo_color.rgb,halo_color_strength), fi.halo_color.a), fi.percentual_point_size, fi.percentual_blend_width
-		), gl_FragCoord.z+fi.depth_offset);
-	}
-	else{
-		finish_fragment(fi.color, gl_FragCoord.z+ fi.depth_offset);
-	}
+	vec3 ro[3], rd[3];
+	//compute_sub_pixel_rays(ro, rd);
+	finish_fragment(fi.color, gl_FragCoord.z+ fi.depth_offset);
+	
 }

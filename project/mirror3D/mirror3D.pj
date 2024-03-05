@@ -7,7 +7,7 @@ addIncDirs    =[INPUT_DIR, CGV_BUILD_DIR."/mirror3D", CGV_DIR."/libs/rgbd_captur
 addProjectDeps=["cgv_utils", "cgv_type","cgv_data","cgv_base", "cgv_math", "cgv_signal", "cgv_reflect", 
 				"cgv_media", "cgv_os", "cgv_gui", "cgv_render", "cgv_gl", 
                 "cgv_viewer", "point_cloud",
-				"cg_fltk", "cg_ext", "crg_holo_view", "crg_grid",
+				"cg_fltk", "cg_ext", "crg_holo_view", "crg_grid", "holo_disp",
 				"rgbd_capture", "cmi_io", "rgbd_render", "rgbd_kinect_azure"];
 addSharedDefines=["MIRROR3D_EXPORTS"];
 addShaderPaths=[INPUT_DIR."/glsl"];

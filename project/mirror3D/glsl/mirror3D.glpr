@@ -8,4 +8,5 @@ fragment_file:fragment.glfs
 fragment_file:a_buffer_lib.glfs
 fragment_file:splat.glsl
 fragment_file:mirror3D.glfs
+//fragment_file:holo_disp.glfs
 // can not contain additional compute shader files
