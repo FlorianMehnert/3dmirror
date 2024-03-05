@@ -1,6 +1,5 @@
 #version 150
 
-uniform float halo_color_strength = 1.0;
 uniform bool render_quads = false;
 
 // *** adapted point.glfs ***
@@ -8,11 +7,6 @@ uniform bool render_quads = false;
 in POINT_FS {
 	vec2 uv;
 	vec4 color;
-	vec4 halo_color;
-	float percentual_blend_width;
-	float percentual_core_size;
-	float percentual_point_size;
-	float percentual_splat_size;
 	float depth_offset;
 } fi;
 

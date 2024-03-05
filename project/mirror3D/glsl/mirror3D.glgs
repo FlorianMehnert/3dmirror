@@ -17,9 +17,6 @@ uniform float discard_dst = 0.02;
 
 in POINT_GS {
 	vec4 color;
-	vec4 halo_color;
-	float halo_width_in_pixel;
-	float percentual_halo_width;
 	float depth_offset;
 	vec4 adjacentPositions[4];
 	bool is_correct;
@@ -28,11 +25,6 @@ in POINT_GS {
 out POINT_FS {
 	vec2 uv;
 	vec4 color;
-	vec4 halo_color;
-	float percentual_blend_width;
-	float percentual_core_size;
-	float percentual_point_size;
-	float percentual_splat_size;
 	float depth_offset;
 } go;
 
@@ -45,14 +37,6 @@ mat4 get_inverse_modelview_projection_matrix();
 mat3 get_normal_matrix();
 mat3 get_inverse_normal_matrix();
 //***** end interface of view.glsl ***********************************
-
-//***** begin interface of splat.glsl ***********************************
-void prepare_splat(
-	in float reference_point_radius, in float pixel_extent,
-	in float blend_width_in_pixel, in float halo_width_in_pixel, in float percentual_halo_width,
-	out float percentual_core_size, out float percentual_point_size,
-	out float percentual_blend_width, out float percentual_splat_size);
-//***** end interface of surface.glsl ***********************************
 
 void emit_corner(in vec3 corner_eye)
 {
@@ -76,7 +60,6 @@ void main()
 		return;
 	// set color to color attribute
 	go.color = gi[0].color;
-	go.halo_color = gi[0].halo_color;
 	go.depth_offset = gi[0].depth_offset;
 	// transform position to eye space
 	vec3 center_eye = (get_modelview_matrix()*gl_in[0].gl_Position).xyz;
@@ -95,16 +78,6 @@ void main()
 	float pixel_extent = 2.0*abs(center_eye.z/(viewport_height*get_projection_matrix()[1][1]));
 	// compute point radius from input point size
 	float reference_point_radius = 0.5 * gl_in[0].gl_PointSize * (measure_point_size_in_pixel ?  pixel_extent : reference_point_size);
-	// compute splat parameters for fragment shader
-	prepare_splat(reference_point_radius, pixel_extent,
-	    blend_width_in_pixel, gi[0].halo_width_in_pixel, gi[0].percentual_halo_width,
-		go.percentual_core_size, go.percentual_point_size,
-		go.percentual_blend_width, go.percentual_splat_size);
-	// compute radius of splat
-	float splat_radius = reference_point_radius * go.percentual_splat_size;
-	// scale by splat radius
-	dx_eye *= splat_radius;
-	dy_eye *= splat_radius;
 	if (max_distance > gl_in[0].gl_Position.z){
 		// create two triangles from the 4 points
 		if (construct_quads){
