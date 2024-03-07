@@ -50,12 +50,10 @@ in ivec3 position;
 in vec4 color;
 in float depth_offset;
 
-
 out POINT_GS {
 	vec4 color;
 	float depth_offset;
 	vec4 adjacentPositions[4];
-	bool is_correct;
 } vo;
 
 void main()
@@ -109,8 +107,8 @@ void main()
 		vo.adjacentPositions[0] = vec4(p, 1.0);
 	if (construct_point(xp+ivec2(1,0), p1_depth, p))
 		vo.adjacentPositions[1] = vec4(p, 1.0);
-	if (construct_point(xp+ivec2(1,1), p2_depth, p))
+	if (construct_point(xp+ivec2(0,1), p3_depth, p))
 		vo.adjacentPositions[2] = vec4(p, 1.0);
-	if (construct_point(xp+ ivec2(0, 1), p3_depth, p))
+	if (construct_point(xp+ ivec2(1, 1), p2_depth, p))
 		vo.adjacentPositions[3] = vec4(p, 1.0);
 }

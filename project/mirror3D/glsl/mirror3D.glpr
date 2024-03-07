@@ -3,7 +3,8 @@ vertex_file:camera.glsl
 vertex_file:rgbd.glsl
 geometry_file:mirror3D.glgs
 geometry_file:view.glsl
-fragment_file:fragment.glfs
 fragment_file:mirror3D.glfs
-//fragment_file:holo_disp.glfs
+fragment_file:holo_disp.glfs
+fragment_file:view.glsl
+fragment_file:fragment.glfs
 // can not contain additional compute shader files

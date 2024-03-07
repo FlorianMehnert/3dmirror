@@ -12,20 +12,20 @@ uniform float viewport_height = 1080.0;
 uniform float blend_width_in_pixel = 1.0;
 uniform float max_distance = 10.0;
 uniform bool construct_quads = false;
-uniform bool render_quads = true;
+uniform bool render_quads;
 uniform float discard_dst = 0.02;
 
 in POINT_GS {
 	vec4 color;
 	float depth_offset;
 	vec4 adjacentPositions[4];
-	bool is_correct;
 } gi[];
 
 out POINT_FS {
 	vec2 uv;
 	vec4 color;
 	float depth_offset;
+	vec4 vertex_position[4];
 } go;
 
 //***** begin interface of view.glsl ***********************************
@@ -82,11 +82,13 @@ void main()
 		// create two triangles from the 4 points
 		if (construct_quads){
 			// TODO: implement multiple construction cases?
+
+			// creating a triangle from 0,1,2 and 1,2,3
 			if (depth_difference_ok()){
-				emit_corner((get_modelview_matrix()*gi[0].adjacentPositions[0]).xyz);
-		  		emit_corner((get_modelview_matrix()*gi[0].adjacentPositions[1]).xyz);
- 				emit_corner((get_modelview_matrix()*gi[0].adjacentPositions[3]).xyz);
- 				emit_corner((get_modelview_matrix()*gi[0].adjacentPositions[2]).xyz);
+				go.vertex_position = gi[0].adjacentPositions;
+				for (int i = 0; i < 4; ++i){
+					emit_corner((get_modelview_matrix()*gi[0].adjacentPositions[i]).xyz);
+				}
 			}
 		}else {
 			emit_corner(center_eye + dx_eye - dy_eye);

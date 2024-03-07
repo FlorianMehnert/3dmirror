@@ -1,13 +1,15 @@
 #version 150
 
-uniform bool render_quads = false;
+uniform bool render_quads;
 
 // *** adapted point.glfs ***
 
+// vertex_position[4] contains position of passed triangle strip: t1: 0,1,2 - t2: 1,2,3 
 in POINT_FS {
 	vec2 uv;
 	vec4 color;
 	float depth_offset;
+	vec4 vertex_position[4];
 } fi;
 
 //***** begin interface of fragment.glfs ***********************************
@@ -21,10 +23,94 @@ void compute_sub_pixel_rays(out vec3 ro[3], out vec3 rd[3]);
 bool finalize_sub_pixel_fragment(in vec3 rgb, in vec3 depth);
 //***** end interface of holo_disp.glfs ***********************************
 
+//***** begin interface of view.glsl ***********************************
+mat4 get_modelview_matrix();
+mat4 get_projection_matrix();
+mat4 get_inverse_projection_matrix();
+mat4 get_modelview_projection_matrix();
+mat4 get_inverse_modelview_matrix();
+mat4 get_inverse_modelview_projection_matrix();
+mat3 get_normal_matrix();
+mat3 get_inverse_normal_matrix();
+//***** end interface of view.glsl ***********************************
+
+float triangle_intersection(in vec3 ro, in vec3 rd, in vec3 p1, in vec3 p2, in vec3 p3) {
+    // Compute triangle edges
+    vec3 e1 = p2 - p1;
+    vec3 e2 = p3 - p1;
+
+    // Compute determinant and check for backface culling
+    vec3 pvec = cross(rd, e2);
+    float det = dot(e1, pvec);
+    if (det < 0.000001) return -1.0;
+
+    // Compute distance from the ray origin to the triangle
+    vec3 tvec = ro - p1;
+    float u = dot(tvec, pvec);
+    if (u < 0.0 || u > det) return -1.0;
+
+    // Compute second barycentric coordinate
+    vec3 qvec = cross(tvec, e1);
+    float v = dot(rd, qvec);
+    if (v < 0.0 || u + v > det) return -1.0;
+
+    // Compute distance along the ray to the intersection point
+    float t = dot(e2, qvec) / det;
+
+    return t;
+}
+
+float intersect(vec3 ro, vec3 rd, out vec3 pos, out vec3 nor, out int mat_id) {
+	// raytrace
+	float tmin = 1e20;
+	nor = vec3(0.0);
+	pos = ro + tmin*rd;
+	mat_id = -1;
+
+	// raytrace torus
+	// increase numerical stability by first intersecting with a boundign sphere and moving the ray origin closer to the torus
+
+	return tmin;
+}
+
+vec3 rayTracePixel(vec3 ro, vec3 rd, out float depth) {
+	vec3 pos, nor; // hit position and normal
+	int mat_id; // material ID
+	float t = intersect(ro, rd, pos, nor, mat_id);
+
+	vec3 color = vec3(0.9);
+	if(mat_id != -1) {
+		// get color and texture coordinates depending on material
+		vec4 material = vec4(0.1, 0.1, 0.1, 0.05); // add actual color calculation probabily just take given color
+		
+		/*
+		somehow find out what the color is we collided with
+		vec2 uv = get_texcoords(pos, mat_id);
+		*/
+		
+		vec3 albedo = material.rgb;
+		
+		// lighting - probably not to be hardcoded :|
+		//color = compute_illumination(pos, nor, rd, shadow_factor, albedo);
+		color = vec3(0.1, 0.1, 0.1);
+	}
+	
+	vec4 pos_clip = get_modelview_projection_matrix() * vec4(pos, 1.0);
+	depth = 0.5*(pos_clip.z / pos_clip.w) + 0.5;
+	
+	return color; 
+}
+
 void main()
 {
 	vec3 ro[3], rd[3];
-	//compute_sub_pixel_rays(ro, rd);
-	finish_fragment(fi.color, gl_FragCoord.z+ fi.depth_offset);
-	
+	compute_sub_pixel_rays(ro, rd);
+
+    vec3 rgb, depth;
+	for (int c = 0; c < 3; c++)
+		rgb[c] = rayTracePixel(ro[c], rd[c], depth[c])[c];
+
+	//finish_fragment(fi.color, gl_FragCoord.z+ fi.depth_offset);
+	if (!finalize_sub_pixel_fragment(rgb, depth))
+		discard;
 }

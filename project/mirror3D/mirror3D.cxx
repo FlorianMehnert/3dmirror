@@ -687,7 +687,6 @@ public:
 			uint16_t left_top = get_depth_value_by_position(lt[0], lt[1], true, true);
 			uint16_t right_bottom = get_depth_value_by_position(rb[0], rb[1], true, false);
 			bool color = left_top != 0 && right_bottom != 0;
-			std::cout << left_top << " " << right_bottom << std::endl;
 			
 			float a[3] = { 0,0,0 };
 			float b[3] = { 0,0,0 };
