@@ -135,7 +135,6 @@ protected:
 	// shader shared buffer object creation
 	GLuint buffer_id = 0;
 
-	bool shader_demo = true;
 	bool construct_quads = true;
 	float distance = 5.0;
 	float discard = 0.02f;
@@ -144,7 +143,13 @@ protected:
 	bool render_quads = true;
 	bool depth_lookup = false;
 	bool flip_y = true;
-	bool calculate_frustum = true;
+	bool calculate_frustum = false;
+	bool do_raytracing = false;
+
+	enum ColorMode {
+		COLOR_TEX_SM, NORMAL, RAYTRACE
+	};
+	ColorMode coloring = COLOR_TEX_SM;
 
 	// dispatch each time the button state is toggled
 	bool one_tap_press = false;
@@ -255,7 +260,6 @@ public:
 	{
 		add_decorator("mirror3D", "heading", "level=1");
 		add_member_control(this, "debug_frame_timing", debug_frame_timing, "check");
-		add_member_control(this, "shader demo", shader_demo, "check");
 		add_member_control(this, "distance", distance, "value_slider", "min=0;max=10");
 		add_member_control(this, "discard_dst", discard, "value_slider", "min=0;max=1;step=0.01");
 		add_member_control(this, "frustum depth", fdepth, "value_slider", "min=0;max=10;step=0.01");
@@ -264,6 +268,7 @@ public:
 		add_member_control(this, "one time execution", one_tap_press, "toggle");
 		add_member_control(this, "render quads", render_quads, "check");
 		add_member_control(this, "show camera position", calculate_frustum, "check");
+		add_member_control(this, "cull mode", coloring, "dropdown", "enums='color,normal,raytrace'");
 
 		
 		if (begin_tree_node("capture", is_running)) {
@@ -666,6 +671,7 @@ public:
 			pr.ref_prog().set_uniform(ctx, "discard_dst", discard);
 			pr.ref_prog().set_uniform(ctx, "construct_quads", construct_quads);
 			pr.ref_prog().set_uniform(ctx, "render_quads", render_quads);
+			pr.ref_prog().set_uniform(ctx, "coloring", (int)coloring);
 			pr.draw(ctx, 0, sP.size()); // only using sP size with geometryless rendering
 			pr.disable(ctx);
 			if (pr.do_lookup_color())

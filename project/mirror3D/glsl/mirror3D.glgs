@@ -26,6 +26,7 @@ out POINT_FS {
 	vec4 color;
 	float depth_offset;
 	vec4 vertex_position[4];
+	vec3 normal;
 } go;
 
 //***** begin interface of view.glsl ***********************************
@@ -85,10 +86,23 @@ void main()
 
 			// creating a triangle from 0,1,2 and 1,2,3
 			if (depth_difference_ok()){
+				vec3 a = vec3(get_modelview_matrix() * gi[0].adjacentPositions[1] - get_modelview_matrix()*gi[0].adjacentPositions[0]);
+					vec3 b = vec3(get_modelview_matrix() * gi[0].adjacentPositions[2] - get_modelview_matrix()*gi[0].adjacentPositions[0]);
+				
+					go.normal = vec3(
+						a.y * b.z - a.z * b.y,
+						a.z * b.x - a.x * b.z,
+						a.x * b.y - a.y * b.x
+				);
 				go.vertex_position = gi[0].adjacentPositions;
 				for (int i = 0; i < 4; ++i){
 					emit_corner((get_modelview_matrix()*gi[0].adjacentPositions[i]).xyz);
 				}
+				
+				/*
+				vec3 a = vec3(gi[0].adjacentPositions[1] - gi[0].adjacentPositions[0]);
+				vec3 b = vec3(gi[0].adjacentPositions[2] - gi[0].adjacentPositions[0]);
+				*/
 			}
 		}else {
 			emit_corner(center_eye + dx_eye - dy_eye);
