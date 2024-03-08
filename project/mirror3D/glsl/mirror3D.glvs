@@ -53,7 +53,7 @@ in float depth_offset;
 out POINT_GS {
 	vec4 color;
 	float depth_offset;
-	vec4 adjacentPositions[4];
+	vec3 adjacentPositions[4];
 } vo;
 
 void main()
@@ -104,11 +104,11 @@ void main()
 	//texture_to_pixel_coordinates(p0_depth ,depth_calib)
 
 	if (construct_point(xp, p0_depth, p))
-		vo.adjacentPositions[0] = vec4(p, 1.0);
+		vo.adjacentPositions[0] = p;
 	if (construct_point(xp+ivec2(1,0), p1_depth, p))
-		vo.adjacentPositions[1] = vec4(p, 1.0);
+		vo.adjacentPositions[1] = p;
 	if (construct_point(xp+ivec2(0,1), p3_depth, p))
-		vo.adjacentPositions[2] = vec4(p, 1.0);
+		vo.adjacentPositions[2] = p;
 	if (construct_point(xp+ ivec2(1, 1), p2_depth, p))
-		vo.adjacentPositions[3] = vec4(p, 1.0);
+		vo.adjacentPositions[3] = p;
 }

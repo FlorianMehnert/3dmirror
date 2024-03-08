@@ -10,7 +10,7 @@ in POINT_FS {
 	vec2 uv;
 	vec4 color;
 	float depth_offset;
-	vec4 vertex_position[4];
+	vec3 vertex_position[4];
 	vec3 normal;
 } fi;
 
@@ -36,7 +36,7 @@ mat3 get_normal_matrix();
 mat3 get_inverse_normal_matrix();
 //***** end interface of view.glsl ***********************************
 
-float triangle_intersection(in vec3 ro, in vec3 rd, in vec3 p1, in vec3 p2, in vec3 p3) {
+float triangle_intersection(vec3 ro, vec3 rd, vec3 p1, vec3 p2, vec3 p3) {
     // Compute triangle edges
     vec3 e1 = p2 - p1;
     vec3 e2 = p3 - p1;
@@ -64,24 +64,43 @@ float triangle_intersection(in vec3 ro, in vec3 rd, in vec3 p1, in vec3 p2, in v
 
 float intersect(vec3 ro, vec3 rd, out vec3 pos, out vec3 nor, out int mat_id) {
 	// raytrace
+	// float triangle_intersection(in vec3 ro, in vec3 rd, in vec3 p1, in vec3 p2, in vec3 p3) {
+	
 	float tmin = 1e20;
 	nor = vec3(0.0);
 	pos = ro + tmin*rd;
 	mat_id = -1;
+	float h = triangle_intersection(ro, rd, fi.vertex_position[0].xyz, fi.vertex_position[1].xyz, fi.vertex_position[2].xyz);
+	
+	if(h > 0.0 && h < tmin) {
+		tmin = h;
+		pos = ro + h*rd;
+		nor = fi.normal;
+		mat_id = 0; // do texture lookup
+	}
+
+	h = triangle_intersection(ro, rd, fi.vertex_position[1].xyz, fi.vertex_position[2].xyz, fi.vertex_position[3].xyz);
+
+	if(h > 0.0 && h < tmin) {
+		tmin = h;
+		pos = ro + h*rd;
+		nor = fi.normal;
+		mat_id = 0; // do texture lookup
+	}
 
 	// raytrace torus
 	// increase numerical stability by first intersecting with a boundign sphere and moving the ray origin closer to the torus
-
 
 	return tmin;
 }
 
 vec3 rayTracePixel(vec3 ro, vec3 rd, out float depth) {
 	vec3 pos, nor; // hit position and normal
+	vec3 col;
 	int mat_id; // material ID
-	float t = intersect(ro, rd, pos, nor, mat_id);
-
-	vec3 color = vec3(1.0,1.0,0.0);
+	//float t = intersect(ro, rd, pos, nor, mat_id);
+	float t = 0.1;
+	col = vec3(1.0, 0, 1.0);
 	if(mat_id != -1) {
 		// get color and texture coordinates depending on material
 		vec4 material = vec4(1.0, 0.1, 0.1, 0.05); // add actual color calculation probabily just take given color
@@ -95,13 +114,13 @@ vec3 rayTracePixel(vec3 ro, vec3 rd, out float depth) {
 		
 		// lighting - probably not to be hardcoded :|
 		//color = compute_illumination(pos, nor, rd, shadow_factor, albedo);
-		color = vec3(1.0, 0.1, 0.1);
+		col = vec3(1.0, 0.1, 0.1);
 	}
 	
 	vec4 pos_clip = get_modelview_projection_matrix() * vec4(pos, 1.0);
 	depth = 0.5*(pos_clip.z / pos_clip.w) + 0.5;
 	
-	return color; 
+	return col; 
 }
 
 void main()
@@ -114,10 +133,10 @@ void main()
 		vec3 ro[3], rd[3];
 		compute_sub_pixel_rays(ro, rd);
 		vec3 rgb, depth;
+
 		for (int c = 0; c < 3; c++)
 			rgb[c] = rayTracePixel(ro[c], rd[c], depth[c])[c];
 		if (!finalize_sub_pixel_fragment(rgb, depth))
 			discard;
 	}
-	
 }

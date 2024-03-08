@@ -252,6 +252,9 @@ public:
 				return true;
 			}
 			break;
+		case 'C': 
+			coloring = (int) coloring < 2 ? (ColorMode)(((int) coloring)+1) : COLOR_TEX_SM;
+			return true;
 		}
 		return false;
 	}
