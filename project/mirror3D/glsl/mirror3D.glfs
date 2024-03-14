@@ -2,6 +2,7 @@
 
 uniform bool render_quads;
 uniform int coloring;
+uniform sampler2D depth_image;
 
 // *** adapted point.glfs ***
 
@@ -123,6 +124,38 @@ vec3 rayTracePixel(vec3 ro, vec3 rd, out float depth) {
 	return col; 
 }
 
+void march_along(vec3 ro, vec3 rd, out vec3 color, out float depth){
+	vec3 sample_point;
+	const int max_steps = 100;
+	const float max_distance = 100.0;
+
+	float depth_threshold = texture(depth_image, gl_FragCoord.xy / vec2(textureSize(depth_image, 0))).r;
+	float t = 0.0; // stepsize
+	depth = 0.0;
+
+	for (int i = 0; i < max_steps; i++) {
+		sample_point = ro + rd * t;
+		depth = texture(depth_image, sample_point.xy).r;
+		if (depth < depth_threshold || t > max_distance) { // either marched more than the first depth
+			break;
+		}
+		t += 0.01; // maybe adjust step size
+	}
+
+	if (depth < depth_threshold) {
+		
+		// intersection found, do shading calculations here
+		vec3 intersection_point = ro + rd * t;
+		// perform shading calculations...
+        
+		//return texture(color_image)vec4(1.0, 1.0, 1.0, 1.0); // Example color
+		color =  fi.color.xyz;
+	} else {
+		// No intersection found
+		discard;
+	}
+}
+
 void main()
 {
 	if (coloring == 0){
@@ -131,12 +164,21 @@ void main()
 		finish_fragment(vec4(fi.normal.xyz, 0.8), gl_FragCoord.z + fi.depth_offset);
 	} else if (coloring == 2) {
 		vec3 ro[3], rd[3];
+		vec3 rgb;
+		vec3 depth;
+
 		compute_sub_pixel_rays(ro, rd);
-		vec3 rgb, depth;
+		for (int i; i < 3; i++){
+			march_along(ro[i], rd[i], rgb, depth[i]);
+		}
+		if (!finalize_sub_pixel_fragment(rgb, depth))
+			discard;
+		/*
 
 		for (int c = 0; c < 3; c++)
 			rgb[c] = rayTracePixel(ro[c], rd[c], depth[c])[c];
 		if (!finalize_sub_pixel_fragment(rgb, depth))
 			discard;
+		*/
 	}
 }
