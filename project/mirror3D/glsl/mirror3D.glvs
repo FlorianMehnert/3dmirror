@@ -77,23 +77,21 @@ void main()
 	}
 	vo.depth_offset = depth_offset;
 	vec3 p = vec3(0.0);
-	if (true){
-		if (construct_point(xp, depth, p)) {
-			if (do_lookup_color) {
-				if (!lookup_color(p, vo.color)) {
-					vo.color = invalid_color;
-					if (discard_invalid_color_points)
-						vo.depth_offset = 200000.0;
-				}
+	if (construct_point(xp, depth, p)) {
+		if (do_lookup_color) {
+			if (!lookup_color(p, vo.color)) {
+				vo.color = invalid_color;
+				if (discard_invalid_color_points)
+					vo.depth_offset = 200000.0;
 			}
-			else
-				vo.color = color;
-			gl_Position = vec4(p, 1.0);
-			gl_PointSize = 1;
 		}
-		else{
-			vo.depth_offset = 200000.0;
-		}
+		else
+			vo.color = color;
+		gl_Position = vec4(p, 1.0);
+		gl_PointSize = 1;
+	}
+	else{
+		vo.depth_offset = 200000.0;
 	}
 
 	float p0_depth = 65535.0 * texture(depth_image, pixel_to_texture_coordinates(xp+ivec2(0,0), depth_calib)).r;

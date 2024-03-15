@@ -146,7 +146,9 @@ protected:
 	float distance = 5.0;
 	float discard = 0.02f;
 	float fdepth = 1.0f;
-	float farea = 1.0f;
+	float cam_x = 0.0f;
+	float cam_y = 0.0f;
+	float cam_color_offset = 0.0f;
 	bool render_quads = true;
 	bool depth_lookup = false;
 	bool flip_y = true;
@@ -293,7 +295,9 @@ public:
 		add_member_control(this, "distance", distance, "value_slider", "min=0;max=10");
 		add_member_control(this, "discard_dst", discard, "value_slider", "min=0;max=1;step=0.01");
 		add_member_control(this, "frustum depth", fdepth, "value_slider", "min=0;max=10;step=0.01");
-		add_member_control(this, "frustum radius", farea, "value_slider", "min=0;max=5;step=0.01");
+		add_member_control(this, "cam_x", cam_x, "value_slider", "min=0;max=2;step=0.01");
+		add_member_control(this, "cam_y", cam_y, "value_slider", "min=0;max=2;step=0.01");
+		add_member_control(this, "color cam vertical offset", cam_color_offset, "value_slider", "min=-2;max=10;step=0.01");
 		add_member_control(this, "construct quads", construct_quads, "check");
 		add_member_control(this, "one time execution", one_tap_press, "toggle");
 		add_member_control(this, "render quads", render_quads, "check");
@@ -411,25 +415,30 @@ public:
 		glUnmapBuffer(GL_SHADER_STORAGE_BUFFER);
 	}
 
-	void trundcated_pyramid(cgv::render::context& ctx, float base_radius, float top_radius, float height) {
+	void truncated_pyramid(cgv::render::context& ctx, float base_x, float base_y, float color_cam_offset, float height) {
 		int segments = 4;
 		float angle_step = 2.0f * M_PI / segments;
 		std::array<vec3,8> vertices;
 
 		for (int i = 0; i < segments; ++i) {
 			float angle = i * angle_step;
-			float x = base_radius * cos(angle);
-			float y = base_radius * sin(angle);
-			vertices[i] = vec3(x * cos(M_PI / 4.0f) - y * sin(M_PI / 4.0f), x * sin(M_PI / 4.0f) + y * cos(M_PI / 4.0f), 0);
+			vertices[i] = vec3(0);
 		}
 
 		// generate vertices for top extent and rotate by 45 degrees
 		for (int i = 0; i < segments; ++i) {
 			float angle = i * angle_step;
-			float x = top_radius * cos(angle);
-			float y = top_radius * sin(angle);
+			float x = cos(angle);
+			float y = sin(angle);
 			vertices[i + 4] = vec3(x * cos(M_PI / 4.0f) - y * sin(M_PI / 4.0f), x * sin(M_PI / 4.0f) + y * cos(M_PI / 4.0f), height);
 		}
+		vec3 x_vector = vertices[5] - vertices[4];
+		vec3 y_vector = vertices[6] - vertices[5];
+
+		vertices[4] = vertices[4] - x_vector * base_x - y_vector * base_y + y_vector * color_cam_offset;
+		vertices[5] = vertices[5] + x_vector * base_x - y_vector * base_y + y_vector * color_cam_offset;
+		vertices[6] = vertices[6] + x_vector * base_x + y_vector * base_y + y_vector * color_cam_offset;
+		vertices[7] = vertices[7] - x_vector * base_x + y_vector * base_y + y_vector * color_cam_offset;
 
 		static int F[4 * 4] = {
 			0, 1, 5, 4,
@@ -484,14 +493,8 @@ public:
 		if (!stereo_view_ptr)
 			return;
 		if (one_tap_press != one_tap_flag) {
-			//executed_compute_shader = true;
 			update_dummy_compute_shader(ctx);
-			//talk_to_raycast_shader(ctx);
 			if (sP.size() > 0) {
-				// slow approach - sP only updated without geometry_less_rendering 
-				// 99% of the time there are not 512*512 entries in sP; also size of elements in sP is 6 bytes
-				// usvec3 vector-> actual size of the array with : 512*512 * 6 bytes = 1572864 bytes = 1,5 mb
-				// Vertex array -> size is: 512*512 * 16 bytes = 4194304 bytes = 4mb
 				std::cout << "sizeof elements in sP " << sizeof(sP[0]) << ", and size of sP: " << sP.size() << std::endl;
 				std::cout << "sizeof Vertex " << sizeof(Vertex) << std::endl;
 			}
@@ -540,13 +543,13 @@ public:
 				depth_tex.disable(ctx); 
 			}
 
-		if (calculate_frustum) { // does not need to be calculated
+		if (calculate_frustum) {
 		}
 		else {
 			ctx.ref_surface_shader_program().enable(ctx);
 			ctx.push_modelview_matrix();
 			ctx.set_color(cgv::rgb(0, 1, 0.2f));
-			trundcated_pyramid(ctx, 0, farea, fdepth);
+			truncated_pyramid(ctx, cam_x, cam_y, cam_color_offset/10, fdepth);
 			ctx.pop_modelview_matrix();
 			ctx.ref_surface_shader_program().disable(ctx);
 		}
