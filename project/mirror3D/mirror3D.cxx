@@ -527,7 +527,11 @@ public:
 			pr.ref_prog().set_uniform(ctx, "construct_quads", construct_quads);
 			pr.ref_prog().set_uniform(ctx, "render_quads", render_quads);
 			pr.ref_prog().set_uniform(ctx, "coloring", (int)coloring);
-			shader_calib.set_uniforms(ctx, prog, *stereo_view_ptr);
+			shader_calib.set_uniforms(ctx, pr.ref_prog(), *stereo_view_ptr);
+			
+			pr.ref_prog().set_uniform(ctx, "eye_separation", shader_calib.eye_separation_factor);
+
+			
 			pr.draw(ctx, 0, sP.size()); // only using sP size with geometryless rendering
 			pr.disable(ctx);
 			if (pr.do_lookup_color())
