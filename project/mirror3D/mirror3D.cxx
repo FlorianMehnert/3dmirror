@@ -17,7 +17,7 @@
 #include <numeric>
 #include <algorithm>
 #include <holo_disp/shader_display_calibration.h>
-
+#include <cgv/defines/quote.h>
 
 // only temporary for variance of depth frame
 #include <iostream>
@@ -66,7 +66,10 @@ class mirror3D :
 	bool calib_outofdate = true;
 protected:
 	bool debug_frame_timing = false;
-	
+	cgv::render::stereo_view* stereo_view_ptr = nullptr;
+	float view_test = 0.0f;
+	bool debug_matrices = false;
+
 	// render data
 	std::vector<usvec3> sP;
 	std::vector<rgb8> sC;
@@ -253,19 +256,33 @@ public:
 		if (e.get_kind() != cgv::gui::EID_KEY)
 			return false;
 		cgv::gui::key_event& ke = static_cast<cgv::gui::key_event&>(e);
+		const auto ka = ke.get_action();
 		if (ke.get_action() == cgv::gui::KA_RELEASE)
 			return false;
 		switch (ke.get_key()) {
-		case cgv::gui::KEY_Space:
-			if (ke.get_modifiers() == 0) {
-				on_set(&(is_running = !is_running));
+			case cgv::gui::KEY_Space:
+				if (ke.get_modifiers() == 0) {
+					on_set(&(is_running = !is_running));
+					return true;
+				}
+				break;
+			case 'C': 
+				coloring = (int) coloring < 2 ? (ColorMode)(((int) coloring)+1) : COLOR_TEX_SM;
+				return true;
+			case cgv::gui::KEY_Left: if (ka != cgv::gui::KeyAction::KA_RELEASE) {
+				shader_calib.eye_separation_factor -= 0.0625f;
+				std::cout << "eye_separation_factor: " << shader_calib.eye_separation_factor << std::endl;
+				on_set(&shader_calib.eye_separation_factor);
 				return true;
 			}
-			break;
-		case 'C': 
-			coloring = (int) coloring < 2 ? (ColorMode)(((int) coloring)+1) : COLOR_TEX_SM;
-			return true;
+			case cgv::gui::KEY_Right: if (ka != cgv::gui::KeyAction::KA_RELEASE) {
+				shader_calib.eye_separation_factor += 0.0625f;
+				std::cout << "eye_separation_factor: " << shader_calib.eye_separation_factor << std::endl;
+				on_set(&shader_calib.eye_separation_factor);
+				return true;
+			}
 		}
+
 		return false;
 	}
 
@@ -282,7 +299,10 @@ public:
 		add_member_control(this, "render quads", render_quads, "check");
 		add_member_control(this, "show camera position", calculate_frustum, "check");
 		add_member_control(this, "cull mode", coloring, "dropdown", "enums='color,normal,raytrace'");
-
+		add_member_control(this, "Eye Separation Factor", shader_calib.eye_separation_factor, "value_slider", "min=0;max=20;ticks=true");
+		add_member_control(this, "View Test", view_test, "value_slider", "min=-1;max=1;step=0.0625");
+		add_member_control(this, "Debug Matrices", debug_matrices, "check");
+		add_member_control(this, "Interpolate View Matrix", shader_calib.interpolate_view_matrix, "check");
 		
 		if (begin_tree_node("capture", is_running)) {
 			align("\a");
@@ -638,10 +658,14 @@ public:
 					// TODO: use own function to avoid pushback : alternatively use own construct function (without pushback)
 					rgbd::construct_rgbd_render_data(depth_frame, sP);
 			}
+			if (!stereo_view_ptr)
+				stereo_view_ptr = dynamic_cast<cgv::render::stereo_view*>(find_view_as_node());
 	}
 
 	void draw(cgv::render::context& ctx)
 	{
+		if (!stereo_view_ptr)
+			return;
 		if (one_tap_press != one_tap_flag) {
 			//executed_compute_shader = true;
 			update_dummy_compute_shader(ctx);
@@ -666,6 +690,10 @@ public:
 			pr.set_calibration(calib);
 			calib_outofdate = false;
 		}
+
+		if (debug_matrices)
+			test_matrix_interpolation(ctx, stereo_view_ptr);
+
 		if (view_ptr)
 			pr.set_y_view_angle(float(view_ptr->get_y_view_angle()));
 		pr.set_render_style(prs);
@@ -685,6 +713,7 @@ public:
 			pr.ref_prog().set_uniform(ctx, "construct_quads", construct_quads);
 			pr.ref_prog().set_uniform(ctx, "render_quads", render_quads);
 			pr.ref_prog().set_uniform(ctx, "coloring", (int)coloring);
+			shader_calib.set_uniforms(ctx, prog, *stereo_view_ptr);
 			pr.draw(ctx, 0, sP.size()); // only using sP size with geometryless rendering
 			pr.disable(ctx);
 			if (pr.do_lookup_color())
@@ -693,7 +722,7 @@ public:
 				depth_tex.disable(ctx); 
 			}
 
-		if (calculate_frustum) {
+		if (calculate_frustum) { // does not need to be calculated
 			std::vector<char> dep_buffer = depth_frame.frame_data;
 
 			auto& R = cgv::render::ref_box_wire_renderer(ctx);
@@ -730,6 +759,106 @@ public:
 			ctx.ref_surface_shader_program().disable(ctx);
 		}
 		glEnable(GL_CULL_FACE);
+	}
+	void test_matrix_interpolation(cgv::render::context& ctx, cgv::render::stereo_view* sview_ptr) {
+
+		const cgv::ivec4& current_vp = ctx.get_window_transformation_array().front().viewport;
+		float aspect = static_cast<float>(current_vp[2]) / static_cast<float>(current_vp[3]);
+		float y_extent_at_focus = static_cast<float>(stereo_view_ptr->get_y_extent_at_focus());
+		float eye_separation = static_cast<float>(stereo_view_ptr->get_eye_distance());
+		float parallax_zero_depth = static_cast<float>(stereo_view_ptr->get_parallax_zero_depth());
+		float z_near = static_cast<float>(stereo_view_ptr->get_z_near());
+		float z_far = static_cast<float>(stereo_view_ptr->get_z_far());
+
+		float screen_width = y_extent_at_focus * aspect;
+
+		eye_separation *= shader_calib.eye_separation_factor;
+
+		cgv::mat4 P0 = cgv::math::stereo_frustum_screen4(-1.0f, eye_separation, y_extent_at_focus * aspect, y_extent_at_focus, parallax_zero_depth, z_near, z_far);
+		cgv::mat4 P1 = cgv::math::stereo_frustum_screen4(1.0f, eye_separation, y_extent_at_focus * aspect, y_extent_at_focus, parallax_zero_depth, z_near, z_far);
+
+		cgv::mat4 MV0 = ctx.get_modelview_matrix();
+		cgv::mat4 MV1 = ctx.get_modelview_matrix();
+		shader_calib.stereo_translate_modelview_matrix(-1.0f, eye_separation, screen_width, MV0);
+		shader_calib.stereo_translate_modelview_matrix(1.0f, eye_separation, screen_width, MV1);
+
+		cgv::mat4 iP0 = inv(P0);
+		cgv::mat4 iP1 = inv(P1);
+
+		cgv::mat4 iMV0 = inv(MV0);
+		cgv::mat4 iMV1 = inv(MV1);
+
+		cgv::mat4 MVP0 = P0 * MV0;
+		cgv::mat4 MVP1 = P1 * MV1;
+
+		cgv::mat4 iMVP0 = inv(MVP0);
+		cgv::mat4 iMVP1 = inv(MVP1);
+
+		float eye_value = view_test - 1.0f;
+		float interpolation_param = 0.5f * view_test;
+
+		cgv::mat4 Pmid = cgv::math::stereo_frustum_screen4(eye_value, eye_separation, y_extent_at_focus * aspect, y_extent_at_focus, parallax_zero_depth, z_near, z_far);
+		cgv::mat4 MVmid = ctx.get_modelview_matrix();
+		shader_calib.stereo_translate_modelview_matrix(eye_value, eye_separation, screen_width, MVmid);
+
+		cgv::mat4 iPmid = inv(Pmid);
+		cgv::mat4 iMVmid = inv(MVmid);
+
+		cgv::mat4 MVPmid = Pmid * MVmid;
+		cgv::mat4 iMVPmid = inv(MVPmid);
+
+		cgv::vec3 col20(iMVP0.col(2));
+		cgv::vec3 col30(iMVP0.col(3));
+
+		cgv::vec3 col21(iMVP1.col(2));
+		cgv::vec3 col31(iMVP1.col(3));
+
+		cgv::vec3 col2int = cgv::math::lerp(col20, col21, interpolation_param);
+		cgv::vec3 col3int = cgv::math::lerp(col30, col31, interpolation_param);
+
+		cgv::vec3 col2mid(iMVPmid.col(2));
+		cgv::vec3 col3mid(iMVPmid.col(3));
+
+		cgv::mat4 Pint(0.0f);
+		cgv::mat4 MVint(0.0f);
+		cgv::mat4 MVPint(0.0f);
+		cgv::mat4 iPint(0.0f);
+		cgv::mat4 iMVint(0.0f);
+		cgv::mat4 iMVPint(0.0f);
+		for (int i = 0; i < 4; ++i) {
+			for (int j = 0; j < 4; ++j) {
+				Pint(i, j) = cgv::math::lerp(P0(i, j), P1(i, j), interpolation_param);
+				MVint(i, j) = cgv::math::lerp(MV0(i, j), MV1(i, j), interpolation_param);
+				MVPint(i, j) = cgv::math::lerp(MVP0(i, j), MVP1(i, j), interpolation_param);
+				iPint(i, j) = cgv::math::lerp(iP0(i, j), iP1(i, j), interpolation_param);
+				iMVint(i, j) = cgv::math::lerp(iMV0(i, j), iMV1(i, j), interpolation_param);
+				iMVPint(i, j) = cgv::math::lerp(iMVP0(i, j), iMVP1(i, j), interpolation_param);
+			}
+		}
+
+		cgv::mat4 D(0.0f);
+		for (int i = 0; i < 4; ++i) {
+			for (int j = 0; j < 4; ++j) {
+				D(i, j) = iMVPmid(i, j) - iMVPint(i, j);
+			}
+		}
+
+		std::cout << "Eye: " << eye_value << ", Interpoaltion t: " << interpolation_param << std::endl;
+		//std::cout << "Left Eye: " << std::endl;
+		//std::cout << iMVP0 << std::endl;
+		//std::cout << "Right Eye: " << std::endl;
+		//std::cout << iMVP1 << std::endl;
+		std::cout << "Center: " << std::endl;
+		std::cout << iMVPmid << std::endl;
+		std::cout << "Diff: " << std::endl;
+		cgv::vec3 d2 = col2int - col2mid;
+		cgv::vec3 d3 = col3int - col3mid;
+		std::cout << d2 << std::endl;
+		std::cout << d3 << std::endl;
+		//std::cout << "Interpolated: " << std::endl;
+		//std::cout << MVint << std::endl;*/
+		//std::cout << "Difference Original vs Interpolated: " << std::endl;
+		//std::cout << D << std::endl;
 	}
 };
 
