@@ -410,176 +410,6 @@ public:
 		}
 		glUnmapBuffer(GL_SHADER_STORAGE_BUFFER);
 	}
-	void init_raycast_compute_shader(context& ctx) {
-		if (!raycast_prog.is_created())
-			raycast_prog.build_program(ctx, "azure_raycast_test.glpr", true);
-		std::cout << (raycast_prog.is_created() ? "raycast_prog is created" : "raycast_prog is not created") << std::endl;
-		std::cout << (raycast_prog.is_linked() ? "raycast_prog is linked" : "raycast_prog is not linked") << std::endl;
-		
-		std::cout << "after build" << std::endl;
-
-		glGenBuffers(1, &vertexBuffer);
-		glBindBuffer(GL_SHADER_STORAGE_BUFFER, vertexBuffer);
-		glBufferData(GL_SHADER_STORAGE_BUFFER, sizeof(Vertex) * 512 * 512, nullptr, GL_STATIC_DRAW);
-
-		glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 1, vertexBuffer);
-
-		glGenBuffers(1, &resultBuffer);
-		glBindBuffer(GL_SHADER_STORAGE_BUFFER, resultBuffer);
-
-		// 8192 is 512 * 512 / 32 for depth image size divided by workload
-		// only read since this is a result buffer
-		glBufferData(GL_SHADER_STORAGE_BUFFER, sizeof(Vertex)*2048, nullptr, GL_DYNAMIC_READ);
-		glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 2, resultBuffer);
-		glGenBuffers(1, &results2Buffer);
-		glBindBuffer(GL_SHADER_STORAGE_BUFFER, results2Buffer);
-		// uint + float * work group
-		glBufferData(GL_SHADER_STORAGE_BUFFER, (sizeof(unsigned int) + sizeof(float)) * 2048, nullptr, GL_DYNAMIC_READ);
-		glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 3, results2Buffer);
-	}
-
-	void talk_to_raycast_shader(cgv::render::context& ctx) {
-		raycast_prog.enable(ctx);
-		// Set uniform values
-		raycast_prog.set_uniform(ctx, "sphere_radius", 0.02);
-		raycast_prog.set_uniform(ctx, "ray_direction", vec4(0, 1, 0, 1)); // pls change to vertex buffer containing constructed points
-		glBindBuffer(GL_SHADER_STORAGE_BUFFER, vertexBuffer);
-		glBufferSubData(GL_SHADER_STORAGE_BUFFER, 0, sizeof(vertices), vertices);
-
-		glDispatchCompute(512 * 512, 1, 1);
-		glMemoryBarrier(GL_SHADER_STORAGE_BARRIER_BIT);
-
-		// retrieve data from buffer
-		int* updatedData0 = (int*)glMapBufferRange(GL_SHADER_STORAGE_BUFFER, 0, sizeof(vertices), GL_MAP_READ_BIT);
-		std::cout << "\x1b[1;31mtrying to retrieve contents of vertexBuffer\x1b[0m" << std::endl;
-		if (updatedData0) {
-			for (int i = 0; i < 10; ++i) {
-				int value = updatedData0[i];
-				std::cout << "vertexBuffer element " << i << ": " << value << std::endl;
-			}
-		}
-		else {
-			std::cout << "\x1b[1;31mdid not successfully retrieve elements of results2Buffer\x1b[0m" << std::endl;
-		}
-		glUnmapBuffer(GL_SHADER_STORAGE_BUFFER);
-
-		glBindBuffer(GL_SHADER_STORAGE_BUFFER, results2Buffer);
-		int* updatedData = (int*)glMapNamedBufferRange(results2Buffer, 0, (sizeof(unsigned int) + sizeof(float)) * 2048, GL_MAP_READ_BIT);
-		std::cout << "\x1b[1;31mtrying to retrieve contents of results2Buffer\x1b[0m" << std::endl;
-		if (updatedData) {
-			for (int i = 0; i < 10; ++i) {
-				int value = updatedData[i];
-				std::cout << "results2Buffer element " << i << ": " << value << std::endl;
-			}
-		}
-		else {
-			std::cout << "\x1b[1;31mdid not successfully retrieve elements of results2Buffer\x1b[0m" << std::endl;
-		}
-		glUnmapBuffer(GL_SHADER_STORAGE_BUFFER);
-
-		glBindBuffer(GL_SHADER_STORAGE_BUFFER, resultBuffer);
-		int* updatedData2 = (int*)glMapNamedBufferRange(resultBuffer, 0, sizeof(Vertex) * 2048, GL_MAP_READ_BIT);
-		
-		std::cout << "\x1b[1;31mtrying to retrieve contents of resultBuffer\x1b[0m" << std::endl;
-		if (updatedData2) {
-			for (int i = 0; i < 2; ++i) {
-				int value = updatedData2[i];
-				std::cout << "resultBuffer element " << i << ": " << value << std::endl;
-			}
-		}
-		else {
-			std::cout << "\x1b[1;31mdid not successfully retrieve elements of resultBuffer\x1b[0m" << std::endl;
-		}
-		glUnmapBuffer(GL_SHADER_STORAGE_BUFFER);
-		raycast_prog.disable(ctx);
-	}
-
-	// return range of depth values
-	std::pair<unsigned short, unsigned short> find_extent() {
-		unsigned int smallest_non_zero = 127;
-		unsigned int largest_finite = 1;
-
-		for (unsigned short depth : depth_frame.frame_data) {
-			// Check if depth is not zero and update smallestNonZero
-			if (depth > 1 && depth < smallest_non_zero) {
-				smallest_non_zero = depth;
-			}
-
-			// Check if depth is finite and update largestFinite
-			if (depth < 127 && depth > largest_finite) {
-				largest_finite = depth;
-			}
-		}
-
-		return std::make_pair(smallest_non_zero, largest_finite);
-	}
-
-	const int TEXTURE_SIZE = 512;
-	int get_index(int x, int y) {
-		return y * (TEXTURE_SIZE-1) + x;
-	}
-		
-	void get_outer_points() {
-		float top = this->camera_edges[0];
-		float right = this->camera_edges[1];
-		float bottom = this->camera_edges[2];
-		float left = this->camera_edges[3];
-
-		this->camera_corners[0] = cgv::vec3(left, top, 1); // top left
-		this->camera_corners[1] = cgv::vec3(right, top, 1); // top right
-		this->camera_corners[2] = cgv::vec3(left, bottom, 1); // bottom left
-		this->camera_corners[3] = cgv::vec3(right, bottom, 1); // bottom right
-	}
-
-	int* get_outer_pixel_depth() {
-		int corners[4];
-		corners[0] = depth_frame.frame_data[0];
-		corners[1] = depth_frame.frame_data[511];
-		corners[2] = depth_frame.frame_data[511*511];
-		corners[3] = depth_frame.frame_data[depth_frame.buffer_size-1];
-		std::cout << corners[0] << " " << corners[1] << " " << corners[2] << " " << corners[3] << std::endl;
-		return corners;
-	}
-
-	
-	// return a raw depth value with given x and y on the pixel coordinates
-	// allow to search further in frame if current data is 0
-	uint16_t get_depth_value_by_position(int x, int y, bool return_non_zero, bool search_forward) {
-		if (x >= depth_frame.width || y >= depth_frame.height) {
-			return 0;
-		} else {
-			uint16_t data = (depth_frame.frame_data[x + y * depth_frame.width] << 8) | depth_frame.frame_data[x + y * depth_frame.width + 1];
-			if (return_non_zero && data == 0)
-				return get_depth_value_by_index(x + y * depth_frame.width + (search_forward ? 2 : -2), return_non_zero, search_forward, 0);
-			else
-				return data;
-		}		
-	}
-
-	// return a raw depth value with given index
-	// allow to search further in frame if current data is 0
-	uint16_t get_depth_value_by_index(int i, bool return_non_zero, bool search_forward, int recurse_level) {
-		if ((recurse_level > 999) || (search_forward ? (i >= depth_frame.width * depth_frame.height) : (i <= 2))) {
-			return (uint16_t) 0;
-		} else {
-			uint16_t data = (depth_frame.frame_data[i] << 8) | depth_frame.frame_data[i + 1];
-			if (return_non_zero && data == 0)
-				return get_depth_value_by_index(i + (search_forward ? 2 : -2), return_non_zero, search_forward, recurse_level + 1);
-			else
-				return data;
-		}
-	}
-
-	void iterate_over_depth_frame() {
-		for (int i = 0; i < 512; i++) {
-			for (int j = 0; i < 512; j++) {
-				uint16_t data = (depth_frame.frame_data[i * 512 + j] << 8) | depth_frame.frame_data[i * 512 + j + 1];
-				if (data != 0) {
-					std::cout << data << " ";
-				} 
-			}
-		}
-	}
 
 	void trundcated_pyramid(cgv::render::context& ctx, float base_radius, float top_radius, float height) {
 		int segments = 4;
@@ -625,17 +455,6 @@ public:
 		ctx.draw_edges_of_faces(V, N, 0, F, FN, 0, 4, 4, false);
 	}
 
-	void map_depth_to_point(int x,int y) {
-		float kinect_point[3];
-		this->rgbd_inp.map_depth_to_point(x, y, depth_frame.frame_data[get_index(x,y)], kinect_point);
-		std::cout << "kinect point with x= " << x << " and y= " << y << " ";
-		for (float d : kinect_point)
-		{
-			std::cout << d << " ";
-		}
-		std::cout << std::endl;
-	}
-
 	void init_frame(cgv::render::context& ctx)
 	{
 			if (!view_ptr)
@@ -646,8 +465,6 @@ public:
 			}
 			if (depth_frame_changed) {
 				create_or_update_texture_from_frame(ctx, depth_tex, depth_frame);
-				//iterate_over_depth_frame();
-				find_extent();
 			}
 			if (!pr.do_geometry_less_rendering()) {
 				if (!pr.do_lookup_color()) {
@@ -691,9 +508,6 @@ public:
 			calib_outofdate = false;
 		}
 
-		if (debug_matrices)
-			test_matrix_interpolation(ctx, stereo_view_ptr);
-
 		if (view_ptr)
 			pr.set_y_view_angle(float(view_ptr->get_y_view_angle()));
 		pr.set_render_style(prs);
@@ -723,32 +537,6 @@ public:
 			}
 
 		if (calculate_frustum) { // does not need to be calculated
-			std::vector<char> dep_buffer = depth_frame.frame_data;
-
-			auto& R = cgv::render::ref_box_wire_renderer(ctx);
-			R.set_render_style(brs);
-			boxes.clear();
-			box_colors.clear();
-
-			vec2 lt = vec2(418,101);
-			vec2 rb = vec2(40, 360);
-			uint16_t left_top = get_depth_value_by_position(lt[0], lt[1], true, true);
-			uint16_t right_bottom = get_depth_value_by_position(rb[0], rb[1], true, false);
-			bool color = left_top != 0 && right_bottom != 0;
-			
-			float a[3] = { 0,0,0 };
-			float b[3] = { 0,0,0 };
-			rgbd_inp.map_depth_to_point(lt[0], lt[1], left_top, a);
-			rgbd_inp.map_depth_to_point(rb[0], rb[1], left_top, b);
-			//boxes.push_back(cgv::dbox3(cgv::vec3(-1, -1, left_top * 0.00439453125), cgv::vec3(1, 1, right_bottom * 0.00439453125)));
-			boxes.push_back(cgv::dbox3(
-				cgv::vec3(a[0], a[1], a[2]),
-				cgv::vec3(b[0], b[1], b[2])
-			));
-			box_colors.push_back(cgv::media::color<float, cgv::media::HLS, cgv::media::OPACITY>(color ? 2.0f : 1.0f, color ? 0 : 0.5f, 1.0f, 1.0f));
-			R.set_box_array(ctx, boxes);
-			R.set_color_array(ctx, box_colors);
-			R.render(ctx, 0, boxes.size());
 		}
 		else {
 			ctx.ref_surface_shader_program().enable(ctx);
@@ -759,106 +547,6 @@ public:
 			ctx.ref_surface_shader_program().disable(ctx);
 		}
 		glEnable(GL_CULL_FACE);
-	}
-	void test_matrix_interpolation(cgv::render::context& ctx, cgv::render::stereo_view* sview_ptr) {
-
-		const cgv::ivec4& current_vp = ctx.get_window_transformation_array().front().viewport;
-		float aspect = static_cast<float>(current_vp[2]) / static_cast<float>(current_vp[3]);
-		float y_extent_at_focus = static_cast<float>(stereo_view_ptr->get_y_extent_at_focus());
-		float eye_separation = static_cast<float>(stereo_view_ptr->get_eye_distance());
-		float parallax_zero_depth = static_cast<float>(stereo_view_ptr->get_parallax_zero_depth());
-		float z_near = static_cast<float>(stereo_view_ptr->get_z_near());
-		float z_far = static_cast<float>(stereo_view_ptr->get_z_far());
-
-		float screen_width = y_extent_at_focus * aspect;
-
-		eye_separation *= shader_calib.eye_separation_factor;
-
-		cgv::mat4 P0 = cgv::math::stereo_frustum_screen4(-1.0f, eye_separation, y_extent_at_focus * aspect, y_extent_at_focus, parallax_zero_depth, z_near, z_far);
-		cgv::mat4 P1 = cgv::math::stereo_frustum_screen4(1.0f, eye_separation, y_extent_at_focus * aspect, y_extent_at_focus, parallax_zero_depth, z_near, z_far);
-
-		cgv::mat4 MV0 = ctx.get_modelview_matrix();
-		cgv::mat4 MV1 = ctx.get_modelview_matrix();
-		shader_calib.stereo_translate_modelview_matrix(-1.0f, eye_separation, screen_width, MV0);
-		shader_calib.stereo_translate_modelview_matrix(1.0f, eye_separation, screen_width, MV1);
-
-		cgv::mat4 iP0 = inv(P0);
-		cgv::mat4 iP1 = inv(P1);
-
-		cgv::mat4 iMV0 = inv(MV0);
-		cgv::mat4 iMV1 = inv(MV1);
-
-		cgv::mat4 MVP0 = P0 * MV0;
-		cgv::mat4 MVP1 = P1 * MV1;
-
-		cgv::mat4 iMVP0 = inv(MVP0);
-		cgv::mat4 iMVP1 = inv(MVP1);
-
-		float eye_value = view_test - 1.0f;
-		float interpolation_param = 0.5f * view_test;
-
-		cgv::mat4 Pmid = cgv::math::stereo_frustum_screen4(eye_value, eye_separation, y_extent_at_focus * aspect, y_extent_at_focus, parallax_zero_depth, z_near, z_far);
-		cgv::mat4 MVmid = ctx.get_modelview_matrix();
-		shader_calib.stereo_translate_modelview_matrix(eye_value, eye_separation, screen_width, MVmid);
-
-		cgv::mat4 iPmid = inv(Pmid);
-		cgv::mat4 iMVmid = inv(MVmid);
-
-		cgv::mat4 MVPmid = Pmid * MVmid;
-		cgv::mat4 iMVPmid = inv(MVPmid);
-
-		cgv::vec3 col20(iMVP0.col(2));
-		cgv::vec3 col30(iMVP0.col(3));
-
-		cgv::vec3 col21(iMVP1.col(2));
-		cgv::vec3 col31(iMVP1.col(3));
-
-		cgv::vec3 col2int = cgv::math::lerp(col20, col21, interpolation_param);
-		cgv::vec3 col3int = cgv::math::lerp(col30, col31, interpolation_param);
-
-		cgv::vec3 col2mid(iMVPmid.col(2));
-		cgv::vec3 col3mid(iMVPmid.col(3));
-
-		cgv::mat4 Pint(0.0f);
-		cgv::mat4 MVint(0.0f);
-		cgv::mat4 MVPint(0.0f);
-		cgv::mat4 iPint(0.0f);
-		cgv::mat4 iMVint(0.0f);
-		cgv::mat4 iMVPint(0.0f);
-		for (int i = 0; i < 4; ++i) {
-			for (int j = 0; j < 4; ++j) {
-				Pint(i, j) = cgv::math::lerp(P0(i, j), P1(i, j), interpolation_param);
-				MVint(i, j) = cgv::math::lerp(MV0(i, j), MV1(i, j), interpolation_param);
-				MVPint(i, j) = cgv::math::lerp(MVP0(i, j), MVP1(i, j), interpolation_param);
-				iPint(i, j) = cgv::math::lerp(iP0(i, j), iP1(i, j), interpolation_param);
-				iMVint(i, j) = cgv::math::lerp(iMV0(i, j), iMV1(i, j), interpolation_param);
-				iMVPint(i, j) = cgv::math::lerp(iMVP0(i, j), iMVP1(i, j), interpolation_param);
-			}
-		}
-
-		cgv::mat4 D(0.0f);
-		for (int i = 0; i < 4; ++i) {
-			for (int j = 0; j < 4; ++j) {
-				D(i, j) = iMVPmid(i, j) - iMVPint(i, j);
-			}
-		}
-
-		std::cout << "Eye: " << eye_value << ", Interpoaltion t: " << interpolation_param << std::endl;
-		//std::cout << "Left Eye: " << std::endl;
-		//std::cout << iMVP0 << std::endl;
-		//std::cout << "Right Eye: " << std::endl;
-		//std::cout << iMVP1 << std::endl;
-		std::cout << "Center: " << std::endl;
-		std::cout << iMVPmid << std::endl;
-		std::cout << "Diff: " << std::endl;
-		cgv::vec3 d2 = col2int - col2mid;
-		cgv::vec3 d3 = col3int - col3mid;
-		std::cout << d2 << std::endl;
-		std::cout << d3 << std::endl;
-		//std::cout << "Interpolated: " << std::endl;
-		//std::cout << MVint << std::endl;*/
-		//std::cout << "Difference Original vs Interpolated: " << std::endl;
-		//std::cout << D << std::endl;
 	}
 };
 
