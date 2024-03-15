@@ -16,6 +16,7 @@
 #include <chrono>
 #include <numeric>
 #include <algorithm>
+#include <holo_disp/shader_display_calibration.h>
 
 
 // only temporary for variance of depth frame
@@ -91,6 +92,9 @@ protected:
 
 	// shader initializer
 	cgv::render::shader_program prog;
+	cgv::vec3 light_direction;
+	holo_disp::holographic_display_calibration disp_calib;
+	holo_disp::shader_display_calibration shader_calib;
 
 	// texture, shaders and display lists
 	cgv::render::texture color;
@@ -168,6 +172,12 @@ public:
 		prs.point_size = 5;
 		prs.blend_width_in_pixel = 0;
 
+		// mirror config
+		light_direction = normalize(cgv::vec3(1.0f, 1.5f, 1.0f));
+		if (!disp_calib.read(QUOTE_SYMBOL_VALUE(INPUT_DIR) "/visual.json"))
+			std::cerr << "could not read holographic display calibration form <"
+			<< QUOTE_SYMBOL_VALUE(INPUT_DIR) "/visual.json>" << std::endl;
+		shader_calib.compute(disp_calib);
 
 	}
 	void on_set(void* member_ptr)

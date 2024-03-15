@@ -1,0 +1,43 @@
+{
+    "configVersion": "1.0",
+    "serial": "LKG-APW92011",
+    "pitch": {
+        "value": 50.0693473815918
+    },
+    "slope": {
+        "value": -7.521984100341797
+    },
+    "center": {
+        "value": 0.07635253667831421
+    },
+    "fringe": {
+        "value": 0.0
+    },
+    "viewCone": {
+        "value": 40.0
+    },
+    "invView": {
+        "value": 1.0
+    },
+    "verticalAngle": {
+        "value": 0.0
+    },
+    "DPI": {
+        "value": 283.0
+    },
+    "screenW": {
+        "value": 3840.0
+    },
+    "screenH": {
+        "value": 2160.0
+    },
+    "flipImageX": {
+        "value": 0.0
+    },
+    "flipImageY": {
+        "value": 0.0
+    },
+    "flipSubp": {
+        "value": 0.0
+    }
+}
