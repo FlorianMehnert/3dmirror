@@ -1,4 +1,4 @@
-#version 330 core
+﻿#version 330 core
 
 uniform bool render_quads;
 uniform int coloring;
@@ -13,6 +13,7 @@ in POINT_FS {
 	float depth_offset;
 	vec3 vertex_position[4];
 	vec3 normal;
+	vec3 debug_color;
 } fi;
 
 //***** begin interface of fragment.glfs ***********************************
@@ -37,64 +38,6 @@ mat3 get_normal_matrix();
 mat3 get_inverse_normal_matrix();
 //***** end interface of view.glsl ***********************************
 
-float triangle_intersection(vec3 ro, vec3 rd, vec3 p1, vec3 p2, vec3 p3) {
-    // Compute triangle edges
-    vec3 e1 = p2 - p1;
-    vec3 e2 = p3 - p1;
-
-    // Compute determinant and check for backface culling
-    vec3 pvec = cross(rd, e2);
-    float det = dot(e1, pvec);
-    if (det < 0.000001) return -1.0;
-
-    // Compute distance from the ray origin to the triangle
-    vec3 tvec = ro - p1;
-    float u = dot(tvec, pvec);
-    if (u < 0.0 || u > det) return -1.0;
-
-    // Compute second barycentric coordinate
-    vec3 qvec = cross(tvec, e1);
-    float v = dot(rd, qvec);
-    if (v < 0.0 || u + v > det) return -1.0;
-
-    // Compute distance along the ray to the intersection point
-    float t = dot(e2, qvec) / det;
-
-    return t;
-}
-
-float intersect(vec3 ro, vec3 rd, out vec3 pos, out vec3 nor, out int mat_id) {
-	// raytrace
-	// float triangle_intersection(in vec3 ro, in vec3 rd, in vec3 p1, in vec3 p2, in vec3 p3) {
-	
-	float tmin = 1e20;
-	nor = vec3(0.0);
-	pos = ro + tmin*rd;
-	mat_id = -1;
-	float h = triangle_intersection(ro, rd, fi.vertex_position[0].xyz, fi.vertex_position[1].xyz, fi.vertex_position[2].xyz);
-	
-	if(h > 0.0 && h < tmin) {
-		tmin = h;
-		pos = ro + h*rd;
-		nor = fi.normal;
-		mat_id = 0; // do texture lookup
-	}
-
-	h = triangle_intersection(ro, rd, fi.vertex_position[1].xyz, fi.vertex_position[2].xyz, fi.vertex_position[3].xyz);
-
-	if(h > 0.0 && h < tmin) {
-		tmin = h;
-		pos = ro + h*rd;
-		nor = fi.normal;
-		mat_id = 0; // do texture lookup
-	}
-
-	// raytrace torus
-	// increase numerical stability by first intersecting with a boundign sphere and moving the ray origin closer to the torus
-
-	return tmin;
-}
-
 vec3 rayTracePixel(vec3 ro, vec3 rd, out float depth) {
 	vec3 pos, nor; // hit position and normal
 	vec3 col;
@@ -113,7 +56,7 @@ vec3 rayTracePixel(vec3 ro, vec3 rd, out float depth) {
 		
 		vec3 albedo = material.rgb;
 		
-		// lighting - probably not to be hardcoded :|
+		// lighting - probably not to be hardcoded 😎
 		//color = compute_illumination(pos, nor, rd, shadow_factor, albedo);
 		col = vec3(1.0, 0.1, 0.1);
 	}
@@ -136,7 +79,7 @@ void march_along(vec3 ro, vec3 rd, out vec3 color, out float depth){
 	for (int i = 0; i < max_steps; i++) {
 		sample_point = ro + rd * t;
 		depth = texture(depth_image, sample_point.xy).r;
-		if (depth < depth_threshold || t > max_distance) { // either marched more than the first depth
+		if (depth < depth_threshold || t > max_distance) {
 			break;
 		}
 		t += 0.01; // maybe adjust step size
@@ -149,7 +92,40 @@ void march_along(vec3 ro, vec3 rd, out vec3 color, out float depth){
 		// perform shading calculations...
         
 		//return texture(color_image)vec4(1.0, 1.0, 1.0, 1.0); // Example color
-		color =  fi.color.xyz;
+		color =  vec4(0.0).xyz; //fi.color.xyz;
+	} else {
+		// No intersection found
+		discard;
+	}
+}
+
+void raymarch_detphtexture_from_anywhere(vec3 ro, vec3 rd, out vec3 color, out float depth){
+	vec3 sample_point;
+	const int max_steps = 100;
+	const float max_distance = 100.0;
+	bool previous_sample_type = false; // no surface
+
+	float depth_threshold = texture(depth_image, gl_FragCoord.xy / vec2(textureSize(depth_image, 0))).r;
+	float t = 0.0; // stepsize
+	depth = 0.0;
+
+	for (int i = 0; i < max_steps; i++) {
+		sample_point = ro + rd * t;
+		depth = texture(depth_image, sample_point.xy).r;
+		if (depth < depth_threshold || t > max_distance) {
+			break;
+		}
+		t += 0.01; // maybe adjust step size
+	}
+
+	if (depth < depth_threshold) {
+		
+		// intersection found, do shading calculations here
+		vec3 intersection_point = ro + rd * t;
+		// perform shading calculations...
+        
+		//return texture(color_image)vec4(1.0, 1.0, 1.0, 1.0); // Example color
+		color =  vec4(0.0).xyz; //fi.color.xyz;
 	} else {
 		// No intersection found
 		discard;
@@ -161,7 +137,9 @@ void main()
 	if (coloring == 0){
 		finish_fragment(fi.color, gl_FragCoord.z + fi.depth_offset);
 	} else if (coloring == 1) {
-		finish_fragment(vec4(fi.normal.xyz, 0.8), gl_FragCoord.z + fi.depth_offset);
+
+		// TODO: why is this factor 10000 -> pretty easy: small triangle = small normal -> only relative matters
+		finish_fragment(vec4(fi.normal.xyz * 10000, 1.0), gl_FragCoord.z + fi.depth_offset);
 	} else if (coloring == 2) {
 		vec3 ro[3], rd[3];
 		vec3 rgb;
@@ -171,14 +149,8 @@ void main()
 		for (int i; i < 3; i++){
 			march_along(ro[i], rd[i], rgb, depth[i]);
 		}
-		if (!finalize_sub_pixel_fragment(rgb, depth))
-			discard;
-		/*
 
-		for (int c = 0; c < 3; c++)
-			rgb[c] = rayTracePixel(ro[c], rd[c], depth[c])[c];
 		if (!finalize_sub_pixel_fragment(rgb, depth))
 			discard;
-		*/
 	}
 }
