@@ -152,7 +152,7 @@ protected:
 	bool render_quads = true;
 	bool depth_lookup = false;
 	bool flip_y = true;
-	bool calculate_frustum = false;
+	bool show_camera = true;
 	bool do_raytracing = false;
 
 	enum ColorMode {
@@ -301,7 +301,7 @@ public:
 		add_member_control(this, "construct quads", construct_quads, "check");
 		add_member_control(this, "one time execution", one_tap_press, "toggle");
 		add_member_control(this, "render quads", render_quads, "check");
-		add_member_control(this, "show camera position", calculate_frustum, "check");
+		add_member_control(this, "show camera position", show_camera, "check");
 		add_member_control(this, "cull mode", coloring, "dropdown", "enums='color,normal,raytrace'");
 		add_member_control(this, "Eye Separation Factor", shader_calib.eye_separation_factor, "value_slider", "min=0;max=20;ticks=true");
 		add_member_control(this, "View Test", view_test, "value_slider", "min=-1;max=1;step=0.0625");
@@ -543,13 +543,11 @@ public:
 				depth_tex.disable(ctx); 
 			}
 
-		if (calculate_frustum) {
-		}
-		else {
+		if (show_camera) {
 			ctx.ref_surface_shader_program().enable(ctx);
 			ctx.push_modelview_matrix();
 			ctx.set_color(cgv::rgb(0, 1, 0.2f));
-			truncated_pyramid(ctx, cam_x, cam_y, cam_color_offset/10, fdepth);
+			truncated_pyramid(ctx, cam_x, cam_y, cam_color_offset / 10, fdepth);
 			ctx.pop_modelview_matrix();
 			ctx.ref_surface_shader_program().disable(ctx);
 		}

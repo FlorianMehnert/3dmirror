@@ -76,7 +76,7 @@ void march_along(vec3 ro, vec3 rd, out vec3 color, out float depth){
 	depth = 0.0;
 
 	for (int i = 0; i < max_steps; i++) {
-		sample_point = ro + rd * t;
+		sample_point = ro + rd * t; // ro and rd are in kinect coordinate system
 		depth = texture(depth_image, (get_projection_matrix()*get_modelview_matrix()*vec4(sample_point.xy, 1.0, 1.0)).xy).r;
 		if (depth < depth_threshold || t > max_distance) {
 			break;
@@ -91,7 +91,7 @@ void march_along(vec3 ro, vec3 rd, out vec3 color, out float depth){
 		// perform shading calculations...
         
 		//return texture(color_image)vec4(1.0, 1.0, 1.0, 1.0); // Example color
-		color = vec4(1.0).xyz;
+		color = vec4(1.0, 0.0, 0.0, 1.0).xyz;
 
 		
 	} else {
@@ -100,14 +100,54 @@ void march_along(vec3 ro, vec3 rd, out vec3 color, out float depth){
 	}
 }
 
+bool intersect_plane(vec3 ro, vec3 rd, vec3 p1, vec3 p2) {
+    // Calculate the plane normal by taking the cross product of vectors from planePoint1 to planePoint2 and planePoint1 to the ray origin
+    vec3 plane_normal = normalize(cross(p2 - p1, p1 - ro));
+
+    // Calculate the denominator of the parametric form of the line equation
+    float denom = dot(plane_normal, rd);
+
+    // If the denominator is zero, the line is parallel to the plane
+    if (abs(denom) < 0.001) {
+        return false;
+    }
+
+    // Calculate the vector from any point on the plane to the ray origin
+    vec3 p0_to_plane = p1 - ro;
+
+    // Calculate the distance from the ray origin to the plane along the ray direction
+    float t = dot(p0_to_plane, plane_normal) / denom;
+
+    // If t is positive and within the bounds of the plane, the line intersects the plane
+    if (t > 0.0) {
+        // Calculate the intersection point
+        vec3 intersection_point = ro + t * rd;
+
+        // Check if the intersection point lies within the bounds of the plane
+        float d1 = dot(intersection_point - p1, p2 - p1);
+        float d2 = dot(intersection_point - p2, p1 - p2);
+
+        if (d1 >= 0.0 && d2 >= 0.0) {
+            return true;
+        }
+    }
+    return false;
+}
+
+
 void raymarch_detphtexture_from_anywhere(vec3 ro, vec3 rd, out vec3 color, out float depth){
 	vec3 sample_point;
 	const int max_steps = 100;
 	const float max_distance = 100.0;
 	bool previous_sample_type = false; // no surface
+	
+	// plane intersection with predefined rgb image -> if none then discard
+	if (!intersect_plane(ro, rd, vec3(-3.53553, 2.91328, 3.3), vec3(3.53553, -2.91328, 3.3))){
+		discard;
+	}
+	else{
 
-	// know rgb image frustum
-
+	}
 }
 
 void main()
