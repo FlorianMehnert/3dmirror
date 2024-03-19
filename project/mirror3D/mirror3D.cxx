@@ -10,8 +10,8 @@
 #include <rgbd_render/rgbd_render.h>
 #include <rgbd_render/rgbd_starter.h>
 #include <rgbd_render/rgbd_point_renderer.h>
-#include <cgv_gl/box_renderer.h>
 #include <cgv_gl/box_wire_renderer.h>
+#include <cgv_gl/rectangle_renderer.h>
 #include <cgv/utils/pointer_test.h>
 #include <chrono>
 #include <numeric>
@@ -73,6 +73,10 @@ protected:
 	// render data
 	std::vector<usvec3> sP;
 	std::vector<rgb8> sC;
+	uint16_t x1;
+	uint16_t y1;
+	uint16_t x2;
+	uint16_t y2;
 
 	// color warped to depth image is only needed in case CPU is used to lookup colors
 	rgbd::frame_type warped_color_frame;
@@ -80,6 +84,7 @@ protected:
 	// rendering configuration
 	cgv::render::point_render_style prs;
 	cgv::render::texture depth_tex, color_tex;
+	cgv::render::box_wire_render_style box_wire_style;
 
 	cgv::render::view* view_ptr = 0;
 
@@ -153,6 +158,7 @@ protected:
 	bool depth_lookup = false;
 	bool flip_y = true;
 	bool show_camera = true;
+	bool show_eye_positions = true;
 	bool do_raytracing = false;
 
 	enum ColorMode {
@@ -297,16 +303,22 @@ public:
 		add_member_control(this, "frustum depth", fdepth, "value_slider", "min=0;max=10;step=0.01");
 		add_member_control(this, "cam_x", cam_x, "value_slider", "min=0;max=2;step=0.01");
 		add_member_control(this, "cam_y", cam_y, "value_slider", "min=0;max=2;step=0.01");
+		add_member_control(this, "px1", x1, "value_slider", "min=0;max=512;step=1");
+		add_member_control(this, "py1", y1, "value_slider", "min=0;max=512;step=1");
+		add_member_control(this, "px2", x2, "value_slider", "min=0;max=512;step=1");
+		add_member_control(this, "py2", y2, "value_slider", "min=0;max=512;step=1");
 		add_member_control(this, "color cam vertical offset", cam_color_offset, "value_slider", "min=-2;max=10;step=0.01");
 		add_member_control(this, "construct quads", construct_quads, "check");
 		add_member_control(this, "one time execution", one_tap_press, "toggle");
 		add_member_control(this, "render quads", render_quads, "check");
 		add_member_control(this, "show camera position", show_camera, "check");
+		add_member_control(this, "show eye positions", show_eye_positions, "check");
 		add_member_control(this, "cull mode", coloring, "dropdown", "enums='color,normal,raytrace'");
 		add_member_control(this, "Eye Separation Factor", shader_calib.eye_separation_factor, "value_slider", "min=0;max=20;ticks=true");
 		add_member_control(this, "View Test", view_test, "value_slider", "min=-1;max=1;step=0.0625");
 		add_member_control(this, "Debug Matrices", debug_matrices, "check");
 		add_member_control(this, "Interpolate View Matrix", shader_calib.interpolate_view_matrix, "check");
+
 		
 		if (begin_tree_node("capture", is_running)) {
 			align("\a");
@@ -339,8 +351,8 @@ public:
 
 		// render points
 		cgv::render::ref_point_renderer(ctx, 1);
-		//auto &R = cgv::render::ref_box_renderer(ctx, 1);
 		cgv::render::ref_box_wire_renderer(ctx, 1);
+		cgv::render::ref_rectangle_renderer(ctx, 1);
 		
 		init_dummy_compute_shader(ctx);
 		//init_raycast_compute_shader(ctx);
@@ -350,8 +362,8 @@ public:
 	void clear(cgv::render::context& ctx)
 	{
 		cgv::render::ref_point_renderer(ctx, -1);
-		//cgv::render::ref_box_renderer(ctx, -1);
 		cgv::render::ref_box_wire_renderer(ctx, -1);
+		cgv::render::ref_rectangle_renderer(ctx, -1);
 
 		pr.clear(ctx);
 		if (is_running) {
@@ -551,8 +563,24 @@ public:
 			ctx.pop_modelview_matrix();
 			ctx.ref_surface_shader_program().disable(ctx);
 		}
-		glEnable(GL_CULL_FACE);
-	}
+		if (show_eye_positions) {
+			auto& bwr = ref_box_wire_renderer(ctx);
+			vec3 p1;
+			vec3 p2;
+			rgbd::construct_point(x1, y1, 1000, p1, calib);
+			rgbd::construct_point(x2, y2, 1000, p2, calib);
+
+			cgv::box3 box(p1, p2);
+			bwr.set_box(ctx, box);
+			box_wire_style.default_color = rgb(0, 0, 0);
+			bwr.set_render_style(box_wire_style);
+			bwr.render(ctx, 0, 1);
+			
+			
+			std::cout << p1 << " " << p2 << std::endl;
+		}
+			glEnable(GL_CULL_FACE);
+		}
 };
 
 #include <cgv/base/register.h>
