@@ -275,7 +275,7 @@ public:
 				}
 				break;
 			case 'C': 
-				coloring = (int) coloring < 2 ? (ColorMode)(((int) coloring)+1) : COLOR_TEX_SM;
+				coloring = (int) coloring < 4 ? (ColorMode)(((int) coloring)+1) : COLOR_TEX_SM;
 				return true;
 			case cgv::gui::KEY_Left: if (ka != cgv::gui::KeyAction::KA_RELEASE) {
 				shader_calib.eye_separation_factor -= 0.0625f;

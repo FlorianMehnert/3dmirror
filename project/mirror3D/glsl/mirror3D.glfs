@@ -3,6 +3,7 @@
 uniform bool render_quads;
 uniform int coloring;
 uniform sampler2D depth_image;
+uniform sampler2D distortion_map;
 
 // *** adapted point.glfs ***
 
@@ -14,6 +15,30 @@ in POINT_FS {
 	vec3 normal;
 	vec3 debug_color;
 } fi;
+
+//***** begin interface of camera.glsl ***********************************
+#define CONVERGENCE 0
+#define SUCCESS 0
+uniform float inversion_epsilon;
+struct calibration
+{
+	int w;
+	int h;
+	float max_radius_for_projection;
+	vec2 dc;
+	float k[6];
+	float p[2];
+	float skew;
+	vec2 c, s;
+};
+vec2 image_to_pixel_coordinates(in vec2 x, in calibration calib);
+vec2 pixel_to_image_coordinates(in vec2 p, in calibration calib);
+vec2 texture_to_pixel_coordinates(in vec2 t, in calibration calib);
+vec2 pixel_to_texture_coordinates(in vec2 p, in calibration calib);
+int apply_distortion_model(in vec2 xd, out vec2 xu, out mat2 J, in calibration calib);
+int apply_distortion_model(in vec2 xd, out vec2 xu, out mat2 J, float epsilon, in calibration calib);
+int invert_distortion_model(in vec2 xu, inout vec2 xd, bool use_xd_as_initial_guess, in calibration calib);
+//***** end interface of camera.glsl ***********************************
 
 //***** begin interface of fragment.glfs ***********************************
 uniform float gamma = 2.2;
@@ -36,6 +61,17 @@ mat4 get_inverse_modelview_projection_matrix();
 mat3 get_normal_matrix();
 mat3 get_inverse_normal_matrix();
 //***** end interface of view.glsl ***********************************
+
+//***** begin interface of rgbd.glsl ***********************************
+uint get_depth_width();
+uint get_depth_height();
+uint lookup_depth(ivec2 xp);
+bool construct_point(in vec2 xp, in float depth, out vec3 p);
+bool lookup_color(vec3 p, out vec4 c);
+bool lookup_color(vec3 p, float eps, out vec4 c);
+//***** end interface of rgbd.glsl ***********************************
+
+uniform calibration depth_calib;
 
 vec3 rayTracePixel(vec3 ro, vec3 rd, out float depth) {
 	vec3 pos, nor; // hit position and normal
@@ -143,6 +179,7 @@ void raymarch_detphtexture_from_anywhere(vec3 ro, vec3 rd, out vec3 color, out f
 	bool previous_sample_type = false; // no surface
 	
 	// plane intersection with predefined rgb image -> if none then discard
+	// what we actually want is an intersection
 	if (!intersect_plane(ro, rd, vec3(-3.53553, 2.91328, 3.3), vec3(3.53553, -2.91328, 3.3))){
 		discard;
 	}
@@ -153,12 +190,17 @@ void raymarch_detphtexture_from_anywhere(vec3 ro, vec3 rd, out vec3 color, out f
 
 void main()
 {
+	// pure coloring
 	if (coloring == 0){
 		finish_fragment(fi.color, gl_FragCoord.z + fi.depth_offset);
+	
+	// calculating normals
 	} else if (coloring == 1) {
 
 		// TODO: why is this factor 10000 -> pretty easy: small triangle = small normal -> only relative matters
 		finish_fragment(vec4(fi.normal.xyz * 10000, 1.0), gl_FragCoord.z + fi.depth_offset);
+	
+	// ray marching
 	} else if (coloring == 2) {
 		vec3 ro[3], rd[3];
 		vec3 rgb = vec3(0.0);
@@ -169,7 +211,21 @@ void main()
 			march_along(ro[i], rd[i], rgb, depth[i]);
 		}
 
-		//if (!finalize_sub_pixel_fragment(rgb, depth))
-		//	discard;
+	// simply displaying the depth texture - zoom in to existing geometry patch to fully view it
+	} else if (coloring == 3) {
+		vec2 texCoords = gl_FragCoord.xy / vec2(512);
+		float depthValue = texture(depth_image, texCoords).r;
+		finish_fragment(vec4(depthValue, 0, 0, 1.0), gl_FragCoord.z);
+	} else if (coloring == 4) {
+		
+		// Calculate texture coordinates based on fragment position
+		vec2 texCoords = gl_FragCoord.xy / vec2(textureSize(depth_image, 0));
+
+		// sample at the WORLD POSITION of the depth texture
+		vec4 coordinate = get_inverse_projection_matrix() * get_inverse_modelview_matrix() * vec4(texCoords, 1.0, 1.0);
+		vec4 color;
+		lookup_color(coordinate.xyz, color);
+		
+		finish_fragment(color, gl_FragCoord.z);
 	}
 }
