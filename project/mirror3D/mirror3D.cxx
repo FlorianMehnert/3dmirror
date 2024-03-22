@@ -10,6 +10,7 @@
 #include <rgbd_render/rgbd_render.h>
 #include <rgbd_render/rgbd_starter.h>
 #include <rgbd_render/rgbd_point_renderer.h>
+#include <rgbd_capture/rgbd_device.h>
 #include <cgv_gl/box_wire_renderer.h>
 #include <cgv_gl/rectangle_renderer.h>
 #include <cgv/utils/pointer_test.h>
@@ -275,7 +276,7 @@ public:
 				}
 				break;
 			case 'C': 
-				coloring = (int) coloring < 4 ? (ColorMode)(((int) coloring)+1) : COLOR_TEX_SM;
+				coloring = (int) coloring < 2 ? (ColorMode)(((int) coloring)+1) : COLOR_TEX_SM;
 				return true;
 			case cgv::gui::KEY_Left: if (ka != cgv::gui::KeyAction::KA_RELEASE) {
 				shader_calib.eye_separation_factor -= 0.0625f;
@@ -543,6 +544,7 @@ public:
 			pr.ref_prog().set_uniform(ctx, "render_quads", render_quads);
 			pr.ref_prog().set_uniform(ctx, "coloring", (int)coloring);
 			shader_calib.set_uniforms(ctx, pr.ref_prog(), *stereo_view_ptr);
+			pr.ref_prog().set_uniform(ctx, "factor", y2);
 			
 			pr.ref_prog().set_uniform(ctx, "eye_separation", shader_calib.eye_separation_factor);
 
@@ -564,6 +566,9 @@ public:
 			ctx.ref_surface_shader_program().disable(ctx);
 		}
 		if (show_eye_positions) {
+			// distortion center is 0,0
+			// principal point x is 
+			//std::cout << rgbd::rgbd_calibration().color.dc << rgbd::rgbd_calibration().color.k << rgbd::rgbd_calibration().color.p[0] << std::endl;
 			auto& bwr = ref_box_wire_renderer(ctx);
 			vec3 p1;
 			vec3 p2;
@@ -575,9 +580,6 @@ public:
 			box_wire_style.default_color = rgb(0, 0, 0);
 			bwr.set_render_style(box_wire_style);
 			bwr.render(ctx, 0, 1);
-			
-			
-			std::cout << p1 << " " << p2 << std::endl;
 		}
 			glEnable(GL_CULL_FACE);
 		}
