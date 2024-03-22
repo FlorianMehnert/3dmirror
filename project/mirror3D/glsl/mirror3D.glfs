@@ -145,46 +145,72 @@ bool map_sample_to_uv(in vec3 ro, out vec2 xd){
 }
 
 // takes world position and returns normalized device coordinates in kinect space
-// WORLD -> NDC (Kinect)
-vec3 world_to_kinect_space(vec3 world_pos){
+// WORLD -> NDC (Kinect) -> UNDISTORT
+vec2 world_to_kinect_space(vec3 world_pos){
 	vec4 position_world = vec4(world_pos, 1.0);
 	vec4 position_kinect = inverse(kinect_model_view_matrix()) * position_world; // apply inverse modelview aka extrinsic parameters (static since kinect is origin of world_space)
 	vec4 position_ndc = inverse(kinect_projection_matrix(521.492, 251.568,255.251, 258.7, 512, 0, 20000)) * position_kinect; // apply inverse projection_matrix - aka intrinsic parameters
-	return position_ndc.xyz;
+	vec2 position_undistorted;
+	mat2 J;
+	apply_distortion_model(position_ndc.xy, position_undistorted, J, depth_calib);
+
+	// TODO handle cases where distortion model fails
+	return position_undistorted;
 }
 
-void march_along(vec3 ro, vec3 rd, out vec3 color, out float depth){ 
-	vec3 sample_point;
+// perform marching in kinect space
+void march_along(vec3 ro, vec3 rd, out vec4 color, out float depth){ 
 	const int max_steps = 100;
 	const float max_distance = 100.0;
+	vec3 sample_point, p;
+	float projected_ray_depth, ray_depth;
+	bool prev_sample_type = false; // means no surface
+	bool curr_sample_type = false;
+	bool is_behind = false;
 
 	float depth_threshold = texture(depth_image, gl_FragCoord.xy / vec2(textureSize(depth_image, 0))).r;
 	float t = 0.0; // stepsize
 	depth = 0.0;
 
 	for (int i = 0; i < max_steps; i++) {
-		sample_point = ro + rd * t; // ro and rd are in kinect coordinate system
-		depth = texture(depth_image, (get_projection_matrix()*get_modelview_matrix()*vec4(sample_point.xy, 1.0, 1.0)).xy).r;
+		sample_point = ro + rd * t; // ro is in kinect coordinate system
+		p = vec3(0.0);
+
+		if (sample_point.x < -1 || sample_point.x > 1 || sample_point.y < -1 || sample_point.y > 1){ // 2. check if out of bounds
+			color = vec4(1.0f, 0, 1.0f, 1.0f);
+			depth = 0.0;
+			curr_sample_type = false;
+		}else if (construct_point(sample_point.xy, lookup_depth(ivec2(sample_point.xy)), p)){ // 3. check if depth is invalid
+			// lookup_color
+			if (!lookup_color(p, color)){
+				color = vec4(1.0, 0.0, 0.0, 1.0);
+			}
+			curr_sample_type = false;
+		}
+
+		projected_ray_depth = lookup_depth(ivec2(sample_point.xy));
+		ray_depth = sample_point.z; // maybe multiplied by the depth distance
+
+		if (ray_depth > projected_ray_depth) { // 4. marched under depth texture
+			is_behind = true;
+		}
+
+		// 5.still need to check if prev type and current type differ and both are not no surface
+
 		if (depth < depth_threshold || t > max_distance) {
 			break;
 		}
+
+		// 6. check if still in frustum ? - check frustum intersection from 0,0,0 in kinect space with 0,0 to 512,512 with calculated depth
+
 		t += 0.01; // maybe adjust step size
 	}
 
-	if (depth < depth_threshold) {
-		
-		// intersection found, do shading calculations here
-		vec3 intersection_point = ro + rd * t;
-		// perform shading calculations...
-        
-		//return texture(color_image)vec4(1.0, 1.0, 1.0, 1.0); // Example color
-		color = vec4(1.0, 0.0, 0.0, 1.0).xyz;
-
-		
-	} else {
-		// No intersection found
-		discard;
+	if (!lookup_color(sample_point.xyz, color)){
+		color = vec4(1.0, 0.0, 0.0, 1.0);
 	}
+	// 10. still compute corrected depth value with respect to eye
+	// 11. output depth and color value and exit fragment shader
 }
 
 vec4 kinect_to_world_space(vec2 uv){
@@ -222,14 +248,14 @@ void main()
 	// ray marching
 	} else if (coloring == 2) {
 		vec3 ro[3], rd[3];
-		vec3 rgb = vec3(0.0);
+		vec4 rgb = vec4(0.0);
 		vec3 depth;
 
 		compute_sub_pixel_rays(ro, rd);
 		for (int i; i < 3; i++){
-			ro[i] = world_to_kinect_space(ro[i]);
+			ro[i] = vec3(world_to_kinect_space(ro[i]), 0); // 1. use sample location in kinect space
 			march_along(ro[i], rd[i], rgb, depth[i]);
 		}
-		finish_fragment(vec4(rgb,1.0), gl_FragCoord.z + fi.depth_offset);
+		finish_fragment(rgb, gl_FragCoord.z + fi.depth_offset);
 	}
 }
