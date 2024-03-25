@@ -74,10 +74,15 @@ protected:
 	// render data
 	std::vector<usvec3> sP;
 	std::vector<rgb8> sC;
-	uint16_t x1;
-	uint16_t y1;
-	uint16_t x2;
-	uint16_t y2;
+	
+	// visualize calculated frustum extent
+	vec3 lu, bd;
+	float depth_calculated_frustum = 1.0f;
+
+	// visualize truncated frustum
+	float cam_x = 0.0f;
+	float cam_y = 0.0f;
+	float cam_color_offset = 0.0f;
 
 	// color warped to depth image is only needed in case CPU is used to lookup colors
 	rgbd::frame_type warped_color_frame;
@@ -152,20 +157,17 @@ protected:
 	float distance = 5.0;
 	float discard = 0.02f;
 	float fdepth = 1.0f;
-	float cam_x = 0.0f;
-	float cam_y = 0.0f;
-	float cam_color_offset = 0.0f;
 	bool render_quads = true;
 	bool depth_lookup = false;
 	bool flip_y = true;
 	bool show_camera = true;
-	bool show_eye_positions = true;
+	bool show_calculated_frustum_size = true;
 	bool do_raytracing = false;
 
 	enum ColorMode {
 		COLOR_TEX_SM, NORMAL, RAYTRACE
 	};
-	ColorMode coloring = COLOR_TEX_SM;
+	ColorMode coloring = RAYTRACE;
 
 	// dispatch each time the button state is toggled
 	bool one_tap_press = false;
@@ -276,7 +278,7 @@ public:
 				}
 				break;
 			case 'C': 
-				coloring = (int) coloring < 2 ? (ColorMode)(((int) coloring)+1) : COLOR_TEX_SM;
+				coloring = (int) coloring < 3 ? (ColorMode)(((int) coloring)+1) : COLOR_TEX_SM;
 				return true;
 			case cgv::gui::KEY_Left: if (ka != cgv::gui::KeyAction::KA_RELEASE) {
 				shader_calib.eye_separation_factor -= 0.0625f;
@@ -304,23 +306,18 @@ public:
 		add_member_control(this, "frustum depth", fdepth, "value_slider", "min=0;max=10;step=0.01");
 		add_member_control(this, "cam_x", cam_x, "value_slider", "min=0;max=2;step=0.01");
 		add_member_control(this, "cam_y", cam_y, "value_slider", "min=0;max=2;step=0.01");
-		add_member_control(this, "px1", x1, "value_slider", "min=0;max=512;step=1");
-		add_member_control(this, "py1", y1, "value_slider", "min=0;max=512;step=1");
-		add_member_control(this, "px2", x2, "value_slider", "min=0;max=512;step=1");
-		add_member_control(this, "py2", y2, "value_slider", "min=0;max=512;step=1");
-		add_member_control(this, "color cam vertical offset", cam_color_offset, "value_slider", "min=-2;max=10;step=0.01");
+		add_member_control(this, "depth of frustum", depth_calculated_frustum, "value_slider", "min=0;max=8;step=0.01");
 		add_member_control(this, "construct quads", construct_quads, "check");
 		add_member_control(this, "one time execution", one_tap_press, "toggle");
 		add_member_control(this, "render quads", render_quads, "check");
 		add_member_control(this, "show camera position", show_camera, "check");
-		add_member_control(this, "show eye positions", show_eye_positions, "check");
+		add_member_control(this, "show calculated frustum size", show_calculated_frustum_size, "check");
 		add_member_control(this, "cull mode", coloring, "dropdown", "enums='color,normal,raytrace'");
 		add_member_control(this, "Eye Separation Factor", shader_calib.eye_separation_factor, "value_slider", "min=0;max=20;ticks=true");
 		add_member_control(this, "View Test", view_test, "value_slider", "min=-1;max=1;step=0.0625");
 		add_member_control(this, "Debug Matrices", debug_matrices, "check");
 		add_member_control(this, "Interpolate View Matrix", shader_calib.interpolate_view_matrix, "check");
 
-		
 		if (begin_tree_node("capture", is_running)) {
 			align("\a");
 			create_gui_base(this, *this);
@@ -499,8 +496,13 @@ public:
 			}
 			if (!stereo_view_ptr)
 				stereo_view_ptr = dynamic_cast<cgv::render::stereo_view*>(find_view_as_node());
-	}
+			
+			// show frustum
+			rgbd_inp.map_depth_to_point(0, 0, depth_calculated_frustum*1000, lu);
+			rgbd_inp.map_depth_to_point(512, 512, depth_calculated_frustum*1000, bd);
 
+	}
+	// I have a low resolution geometry created from a low res depth texture.I also have a color texture available which I want to use to color.The color texture has a higher resolution.How do I map the color in the fragment shader ?
 	void draw(cgv::render::context& ctx)
 	{
 		if (!stereo_view_ptr)
@@ -544,7 +546,6 @@ public:
 			pr.ref_prog().set_uniform(ctx, "render_quads", render_quads);
 			pr.ref_prog().set_uniform(ctx, "coloring", (int)coloring);
 			shader_calib.set_uniforms(ctx, pr.ref_prog(), *stereo_view_ptr);
-			pr.ref_prog().set_uniform(ctx, "factor", y2);
 			
 			pr.ref_prog().set_uniform(ctx, "eye_separation", shader_calib.eye_separation_factor);
 
@@ -565,17 +566,15 @@ public:
 			ctx.pop_modelview_matrix();
 			ctx.ref_surface_shader_program().disable(ctx);
 		}
-		if (show_eye_positions) {
+		if (show_calculated_frustum_size) {
 			// distortion center is 0,0
 			// principal point x is 
 			//std::cout << rgbd::rgbd_calibration().color.dc << rgbd::rgbd_calibration().color.k << rgbd::rgbd_calibration().color.p[0] << std::endl;
 			auto& bwr = ref_box_wire_renderer(ctx);
 			vec3 p1;
 			vec3 p2;
-			rgbd::construct_point(x1, y1, 1000, p1, calib);
-			rgbd::construct_point(x2, y2, 1000, p2, calib);
 
-			cgv::box3 box(p1, p2);
+			cgv::box3 box(lu, bd);
 			bwr.set_box(ctx, box);
 			box_wire_style.default_color = rgb(0, 0, 0);
 			bwr.set_render_style(box_wire_style);
