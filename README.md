@@ -6,6 +6,8 @@ git clone --recurse-submodules https://github.com/FlorianMehnert/3dmirror.git
 ## current progress
 ![invalid borders](./images/invalid_borders.png)
 ![webcam](./images/discarded_triangles_webcam.png)
+![funny image](./images/funny_distorted_picture.png)
+![sad mirror](./images/sad_mirror.png)
 
 # cgv usage
 - see [instructions](https://github.com/lintianfang/coding_issues_cgv/blob/master/how%20to%20use%20%20cgv_framework.txt) for common issues
