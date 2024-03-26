@@ -13,6 +13,7 @@
 #include <rgbd_capture/rgbd_device.h>
 #include <cgv_gl/box_wire_renderer.h>
 #include <cgv_gl/rectangle_renderer.h>
+#include <cgv_gl/sphere_renderer.h>
 #include <cgv/utils/pointer_test.h>
 #include <chrono>
 #include <numeric>
@@ -83,6 +84,9 @@ protected:
 	float cam_x = 0.0f;
 	float cam_y = 0.0f;
 	float cam_color_offset = 0.0f;
+
+	// show spheres that represent the left and right most
+	bool visualize_eye_positions = true;
 
 	// color warped to depth image is only needed in case CPU is used to lookup colors
 	rgbd::frame_type warped_color_frame;
@@ -312,11 +316,12 @@ public:
 		add_member_control(this, "render quads", render_quads, "check");
 		add_member_control(this, "show camera position", show_camera, "check");
 		add_member_control(this, "show calculated frustum size", show_calculated_frustum_size, "check");
-		add_member_control(this, "cull mode", coloring, "dropdown", "enums='color,normal,raytrace'");
+		add_member_control(this, "cull mode", coloring, "dropdown", "enums='color,normal,raytrace,ro'");
 		add_member_control(this, "Eye Separation Factor", shader_calib.eye_separation_factor, "value_slider", "min=0;max=20;ticks=true");
 		add_member_control(this, "View Test", view_test, "value_slider", "min=-1;max=1;step=0.0625");
 		add_member_control(this, "Debug Matrices", debug_matrices, "check");
 		add_member_control(this, "Interpolate View Matrix", shader_calib.interpolate_view_matrix, "check");
+		add_member_control(this, "View Eye Positions", visualize_eye_positions, "check");
 
 		if (begin_tree_node("capture", is_running)) {
 			align("\a");
@@ -351,6 +356,7 @@ public:
 		cgv::render::ref_point_renderer(ctx, 1);
 		cgv::render::ref_box_wire_renderer(ctx, 1);
 		cgv::render::ref_rectangle_renderer(ctx, 1);
+		cgv::render::ref_sphere_renderer(ctx, 1);
 		
 		init_dummy_compute_shader(ctx);
 		//init_raycast_compute_shader(ctx);
@@ -362,6 +368,7 @@ public:
 		cgv::render::ref_point_renderer(ctx, -1);
 		cgv::render::ref_box_wire_renderer(ctx, -1);
 		cgv::render::ref_rectangle_renderer(ctx, -1);
+		cgv::render::ref_sphere_renderer(ctx, -1);
 
 		pr.clear(ctx);
 		if (is_running) {
@@ -580,8 +587,24 @@ public:
 			bwr.set_render_style(box_wire_style);
 			bwr.render(ctx, 0, 1);
 		}
+
+		if (visualize_eye_positions) {
+			auto& sr1 = ref_sphere_renderer(ctx);
+			auto& sr2 = ref_sphere_renderer(ctx);
+			sr1.set_radius(ctx,.1f);
+			sr1.set_position(ctx, shader_calib.left_eye/10);
+			sr1.render(ctx, 0, 1);
+			sr2.set_radius(ctx, .1f);
+			sr2.set_position(ctx, shader_calib.right_eye/10);
+			sr2.render(ctx, 0, 1);
+			std::cout << shader_calib.left_eye << std::endl;
+			shader_calib.pitch;
+			
+		}
+
 			glEnable(GL_CULL_FACE);
 		}
+		
 };
 
 #include <cgv/base/register.h>

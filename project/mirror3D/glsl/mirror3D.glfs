@@ -260,6 +260,6 @@ void main()
 		//finish_fragment(texture(color_image, pixel_to_image_coordinates(gl_FragCoord.xy, color_calib)));
 		vec3 ro[3], rd[3];
 		compute_sub_pixel_rays(ro, rd);
-		finish_fragment(vec4(ro[0], 1.0), gl_FragCoord.z + fi.depth_offset);
+		finish_fragment(vec4(ro[1], 1.0), gl_FragCoord.z + fi.depth_offset);
 	}
 }
