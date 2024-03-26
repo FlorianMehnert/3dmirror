@@ -139,16 +139,18 @@ bool map_sample_to_uv(in vec3 ro, out vec2 xd){
 	mat2 J;
 	vec2 xu;
 	// take distorted and output undistorted with jacobian matrix aswell as return code of either SUCCESS, OUT_OF_BOUNDS or DIVISION_BY_ZERO
-	int dir = apply_distortion_model(xd, xu, J, depth_calib);
+	int dir;
+	dir = apply_distortion_model(xd, xu, J, depth_calib);
 	return dir == SUCCESS;
 }
 
 // takes world position and returns normalized device coordinates in kinect space
 // WORLD -> NDC (Kinect) -> UNDISTORT
 vec2 world_to_kinect_space(vec3 world_pos){
-	vec4 position_world = vec4(world_pos, 1.0);
-	vec4 position_kinect = inverse(kinect_model_view_matrix()) * position_world; // apply inverse modelview aka extrinsic parameters (static since kinect is origin of world_space)
-	vec4 position_ndc = inverse(kinect_projection_matrix(521.492, 251.568,255.251, 258.7, 512, 0, 20000)) * position_kinect; // apply inverse projection_matrix - aka intrinsic parameters
+	vec4 position_world, position_kinect, position_ndc;
+	position_world = vec4(world_pos, 1.0);
+	position_kinect = inverse(kinect_model_view_matrix()) * position_world; // apply inverse modelview aka extrinsic parameters (static since kinect is origin of world_space)
+	position_ndc = inverse(kinect_projection_matrix(521.492, 251.568,255.251, 258.7, 512, 0, 20000)) * position_kinect; // apply inverse projection_matrix - aka intrinsic parameters
 	vec2 position_undistorted;
 	mat2 J;
 	apply_distortion_model(position_ndc.xy, position_undistorted, J, depth_calib);
@@ -241,7 +243,6 @@ void main()
 	// calculating normals
 	} else if (coloring == 1) {
 
-		// TODO: why is this factor 10000 -> pretty easy: small triangle = small normal -> only relative matters
 		finish_fragment(vec4(fi.normal.xyz * 10000, 1.0), gl_FragCoord.z + fi.depth_offset);
 	
 	// ray marching
@@ -260,6 +261,7 @@ void main()
 		//finish_fragment(texture(color_image, pixel_to_image_coordinates(gl_FragCoord.xy, color_calib)));
 		vec3 ro[3], rd[3];
 		compute_sub_pixel_rays(ro, rd);
-		finish_fragment(vec4(ro[1], 1.0), gl_FragCoord.z + fi.depth_offset);
+		// remember different modelview matricies for each view inbetween the eyes
+		finish_fragment((get_inverse_modelview_projection_matrix() * vec4(gl_FragCoord.xy, 0.0, 0.0)), gl_FragCoord.z + fi.depth_offset);
 	}
 }

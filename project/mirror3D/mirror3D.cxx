@@ -164,8 +164,8 @@ protected:
 	bool render_quads = true;
 	bool depth_lookup = false;
 	bool flip_y = true;
-	bool show_camera = true;
-	bool show_calculated_frustum_size = true;
+	bool show_camera = false;
+	bool show_calculated_frustum_size = false;
 	bool do_raytracing = false;
 
 	enum ColorMode {
@@ -318,7 +318,6 @@ public:
 		add_member_control(this, "show calculated frustum size", show_calculated_frustum_size, "check");
 		add_member_control(this, "cull mode", coloring, "dropdown", "enums='color,normal,raytrace,ro'");
 		add_member_control(this, "Eye Separation Factor", shader_calib.eye_separation_factor, "value_slider", "min=0;max=20;ticks=true");
-		add_member_control(this, "View Test", view_test, "value_slider", "min=-1;max=1;step=0.0625");
 		add_member_control(this, "Debug Matrices", debug_matrices, "check");
 		add_member_control(this, "Interpolate View Matrix", shader_calib.interpolate_view_matrix, "check");
 		add_member_control(this, "View Eye Positions", visualize_eye_positions, "check");
@@ -533,6 +532,13 @@ public:
 			calib_outofdate = false;
 		}
 
+		ctx.ref_surface_shader_program().enable(ctx);
+		ctx.push_modelview_matrix();
+		vec3 point_between_eyes = shader_calib.left_eye + vec3(0.5) * (shader_calib.right_eye - shader_calib.left_eye);
+		ctx.mul_modelview_matrix(cgv::math::translate4(point_between_eyes));
+		ctx.pop_modelview_matrix();
+		ctx.ref_surface_shader_program().disable(ctx);
+
 		if (view_ptr)
 			pr.set_y_view_angle(float(view_ptr->get_y_view_angle()));
 		pr.set_render_style(prs);
@@ -555,7 +561,6 @@ public:
 			shader_calib.set_uniforms(ctx, pr.ref_prog(), *stereo_view_ptr);
 			
 			pr.ref_prog().set_uniform(ctx, "eye_separation", shader_calib.eye_separation_factor);
-
 			
 			pr.draw(ctx, 0, sP.size()); // only using sP size with geometryless rendering
 			pr.disable(ctx);
@@ -592,14 +597,11 @@ public:
 			auto& sr1 = ref_sphere_renderer(ctx);
 			auto& sr2 = ref_sphere_renderer(ctx);
 			sr1.set_radius(ctx,.1f);
-			sr1.set_position(ctx, shader_calib.left_eye/10);
+			sr1.set_position(ctx, shader_calib.left_eye/2);
 			sr1.render(ctx, 0, 1);
 			sr2.set_radius(ctx, .1f);
-			sr2.set_position(ctx, shader_calib.right_eye/10);
+			sr2.set_position(ctx, shader_calib.right_eye/2);
 			sr2.render(ctx, 0, 1);
-			std::cout << shader_calib.left_eye << std::endl;
-			shader_calib.pitch;
-			
 		}
 
 			glEnable(GL_CULL_FACE);
