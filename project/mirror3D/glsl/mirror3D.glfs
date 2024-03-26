@@ -12,7 +12,7 @@ uniform sampler2D distortion_map;
 uniform sampler2D color_image;
 uniform int y2;
 
-// *** adapted point.glfs ***
+// this is adapted point.glfs
 
 // vertex_position[4] contains position of passed triangle strip: t1: 0,1,2 - t2: 1,2,3 
 in POINT_FS {
@@ -21,7 +21,7 @@ in POINT_FS {
 	vec3 normal;
 } fi;
 
-//***** begin interface of camera.glsl ***********************************
+// ***** begin interface of camera.glsl ***********************************
 #define CONVERGENCE 0
 #define SUCCESS 0
 uniform float inversion_epsilon;
@@ -43,20 +43,20 @@ vec2 pixel_to_texture_coordinates(in vec2 p, in calibration calib);
 int apply_distortion_model(in vec2 xd, out vec2 xu, out mat2 J, in calibration calib);
 int apply_distortion_model(in vec2 xd, out vec2 xu, out mat2 J, float epsilon, in calibration calib);
 int invert_distortion_model(in vec2 xu, inout vec2 xd, bool use_xd_as_initial_guess, in calibration calib);
-//***** end interface of camera.glsl ***********************************
+// ***** end interface of camera.glsl ***********************************
 
-//***** begin interface of fragment.glfs ***********************************
+// ***** begin interface of fragment.glfs ***********************************
 uniform float gamma = 2.2;
 void finish_fragment(vec4 color);
 void finish_fragment(vec4 color, float depth);
-//***** end interface of fragment.glfs ***********************************
+// ***** end interface of fragment.glfs ***********************************
 
-//***** begin interface of holo_disp.glfs ***********************************
+// ***** begin interface of holo_disp.glfs ***********************************
 void compute_sub_pixel_rays(out vec3 ro[3], out vec3 rd[3]);
 bool finalize_sub_pixel_fragment(in vec3 rgb, in vec3 depth);
-//***** end interface of holo_disp.glfs ***********************************
+// ***** end interface of holo_disp.glfs ***********************************
 
-//***** begin interface of view.glsl ***********************************
+// ***** begin interface of view.glsl ***********************************
 mat4 get_modelview_matrix();
 mat4 get_projection_matrix();
 mat4 get_inverse_projection_matrix();
@@ -65,16 +65,16 @@ mat4 get_inverse_modelview_matrix();
 mat4 get_inverse_modelview_projection_matrix();
 mat3 get_normal_matrix();
 mat3 get_inverse_normal_matrix();
-//***** end interface of view.glsl ***********************************
+// ***** end interface of view.glsl ***********************************
 
-//***** begin interface of rgbd.glsl ***********************************
+// ***** begin interface of rgbd.glsl ***********************************
 uint get_depth_width();
 uint get_depth_height();
 uint lookup_depth(ivec2 xp);
 bool construct_point(in vec2 xp, in float depth, out vec3 p);
 bool lookup_color(vec3 p, out vec4 c);
 bool lookup_color(vec3 p, float eps, out vec4 c);
-//***** end interface of rgbd.glsl ***********************************
+// ***** end interface of rgbd.glsl ***********************************
 
 uniform calibration depth_calib;
 uniform calibration color_calib;
@@ -110,11 +110,12 @@ vec3 rayTracePixel(vec3 ro, vec3 rd, out float depth) {
 
 mat4 kinect_projection_matrix(float fx, float fy, float cx, float cy, int image_height, float near_clip, float far_clip){
 
-    float fovy = 2.0 * atan(0.5 * image_height / fy);
+    float fovy, f, z0, z1;
+	 fovy = 2.0 * atan(0.5 * image_height / fy);
 
-    float f = 1.0 / tan(fovy / 2.0);
-    float z0 = - (far_clip + near_clip) / (far_clip - near_clip);
-    float z1 = - 2.0 * far_clip * near_clip / (far_clip - near_clip);
+    f = 1.0 / tan(fovy / 2.0);
+    z0 = - (far_clip + near_clip) / (far_clip - near_clip);
+    z1 = - 2.0 * far_clip * near_clip / (far_clip - near_clip);
 
     return mat4(
 		f, 0, 0, 0,
