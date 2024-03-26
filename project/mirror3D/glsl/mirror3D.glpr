@@ -5,6 +5,7 @@ geometry_file:mirror3D.glgs
 geometry_file:view.glsl
 fragment_file:camera.glsl
 fragment_file:rgbd.glsl
+fragment_file:mirror3D.glsl
 fragment_file:mirror3D.glfs
 fragment_file:holo_disp.glfs
 fragment_file:view.glsl
