@@ -624,7 +624,7 @@ public:
 				sr3.set_position(ctx, vec3(mapped_sample, 1.0));
 				std::cout << mapped_sample << std::endl;
 				sr3.set_radius(ctx, .05f);
-				sr3.render(ctx, 0, 1);
+				sr3.render(ctx, 0, 1); 
 			}
 		}
 
