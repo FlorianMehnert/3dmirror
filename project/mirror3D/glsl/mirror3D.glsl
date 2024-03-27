@@ -159,17 +159,18 @@ bool map_sample_to_uv(in vec3 ro, out vec2 xd) {
 }
 
 // perform marching in kinect space
-void march_along(vec3 ro, vec3 rd, out vec4 color, out float depth) {
+void march_along(vec3 ro, vec3 rd, int color_channel, out vec4 color, out float depth) {
 	const int max_steps = 100;
 	const float max_distance = 100.0;
 	vec3 sample_point, p;
+	vec4 hit_color;
 	float projected_ray_depth, ray_depth;
 	bool prev_sample_type = false; // means no surface
 	bool curr_sample_type = false;
 	bool is_behind = false;
 
 	float depth_threshold = texture(depth_image, gl_FragCoord.xy / vec2(textureSize(depth_image, 0))).r;
-	float t = 0.0; // stepsize
+	float t = 0.1; // stepsize
 	depth = 0.0;
 
 	for (int i = 0; i < max_steps; i++) {
@@ -177,14 +178,73 @@ void march_along(vec3 ro, vec3 rd, out vec4 color, out float depth) {
 		p = vec3(0.0);
 
 		if (sample_point.x < -1 || sample_point.x > 1 || sample_point.y < -1 || sample_point.y > 1) { // 2. check if out of bounds
-			color = vec4(1.0f, 0, 1.0f, 1.0f);
+			color[color_channel] = vec4(1.0f, 0, 1.0f, 1.0f)[color_channel];
 			depth = 0.0;
 			curr_sample_type = false;
 		}
 		else if (construct_point(sample_point.xy, lookup_depth(ivec2(sample_point.xy)), p)) { // 3. check if depth is invalid
-			// lookup_color
-			if (!lookup_color(p, color)) {
-				color = vec4(1.0, 0.0, 0.0, 1.0);
+			// lookup_color -> but do
+			if (!lookup_color(p, hit_color)) {
+				color[color_channel] = vec4(1.0, 0.0, 0.0, 1.0)[color_channel];
+			} else {
+				color[color_channel] = hit_color[color_channel];
+			}
+			curr_sample_type = false;
+		}
+
+		projected_ray_depth = lookup_depth(ivec2(sample_point.xy));
+		ray_depth = sample_point.z; // maybe multiplied by the depth distance
+
+		if (ray_depth > projected_ray_depth) // 4. marched under depth texture
+			is_behind = true;
+
+		// 5.still need to check if prev type and current type differ and both are not no surface
+
+		if (depth < depth_threshold || t > max_distance) 
+			break;
+
+		// 6. check if still in frustum ? - check frustum intersection from 0,0,0 in kinect space with 0,0 to 512,512 with calculated depth
+
+		t += 0.01; // maybe adjust step size
+	}
+
+	if (!lookup_color(p, hit_color)) 
+		color[color_channel] = vec4(1.0, 0.0, 1.0, 1.0)[color_channel];
+	else 
+		color[color_channel] = hit_color[color_channel];
+	// 10. still compute corrected depth value with respect to eye
+	// 11. output depth and color value and exit fragment shader
+}
+
+void part_of_march_along(vec3 ro, vec3 rd, int color_channel, out vec4 color, out float depth) {
+	const int max_steps = 100;
+	const float max_distance = 100.0;
+	vec3 sample_point, p;
+	vec4 hit_color;
+	float projected_ray_depth, ray_depth;
+	bool prev_sample_type = false; // means no surface
+	bool curr_sample_type = false;
+	bool is_behind = false;
+
+	float t = 0.1; // stepsize
+	depth = 0.0;
+
+	for (int i = 0; i < max_steps; i++) {
+		sample_point = ro + rd * t; // ro is in kinect coordinate system
+		p = vec3(0.0);
+
+		if (sample_point.x < -1 || sample_point.x > 1 || sample_point.y < -1 || sample_point.y > 1) { // 2. check if out of bounds
+			color[color_channel] = 0;
+			depth = 0.0;
+			curr_sample_type = false;
+		}
+		else if (construct_point(sample_point.xy, lookup_depth(ivec2(sample_point.xy)), p)) { // 3. check if depth is invalid
+			// lookup_color -> but do
+			if (!lookup_color(p, hit_color)) {
+				color[color_channel] = vec4(1.0, 0.0, 0.0, 1.0)[color_channel];
+			}
+			else {
+				color[color_channel] = hit_color[color_channel];
 			}
 			curr_sample_type = false;
 		}
@@ -198,7 +258,7 @@ void march_along(vec3 ro, vec3 rd, out vec4 color, out float depth) {
 
 		// 5.still need to check if prev type and current type differ and both are not no surface
 
-		if (depth < depth_threshold || t > max_distance) {
+		if (t > max_distance) {
 			break;
 		}
 
@@ -206,10 +266,4 @@ void march_along(vec3 ro, vec3 rd, out vec4 color, out float depth) {
 
 		t += 0.01; // maybe adjust step size
 	}
-
-	if (!lookup_color(sample_point.xyz, color)) {
-		color = vec4(1.0, 0.0, 0.0, 1.0);
-	}
-	// 10. still compute corrected depth value with respect to eye
-	// 11. output depth and color value and exit fragment shader
 }
