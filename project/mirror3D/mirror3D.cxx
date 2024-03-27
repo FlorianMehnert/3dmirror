@@ -282,7 +282,7 @@ public:
 				}
 				break;
 			case 'C': 
-				coloring = (int) coloring < 3 ? (ColorMode)(((int) coloring)+1) : COLOR_TEX_SM;
+				coloring = (int) coloring < 4 ? (ColorMode)(((int) coloring)+1) : COLOR_TEX_SM;
 				return true;
 			case cgv::gui::KEY_Left: if (ka != cgv::gui::KeyAction::KA_RELEASE) {
 				shader_calib.eye_separation_factor -= 0.0625f;
@@ -602,6 +602,30 @@ public:
 			sr2.set_radius(ctx, .1f);
 			sr2.set_position(ctx, shader_calib.right_eye/2);
 			sr2.render(ctx, 0, 1);
+			
+			// if this is what I think it is - this will map correctly
+			cgv::math::fmat<double, 2U, 3U> MV = calib.depth.get_camera_matrix();
+			double detA = MV(0, 0) * MV(1, 1) - MV(0, 1) * MV(1, 0);
+
+			// Check if the matrix is invertible (determinant not equal to zero)
+			if (detA != 0) {
+				// Calculate the inverse of the matrix
+				cgv::math::fmat<double, 2U, 3U> iMV;
+				iMV(0, 0) = MV(1, 1) / detA;
+				iMV(0, 1) = -MV(0, 1) / detA;
+				iMV(0, 2) = (MV(0, 1) * MV(1, 2) - MV(1, 1) * MV(0, 2)) / detA;
+				iMV(1, 0) = -MV(1, 0) / detA;
+				iMV(1, 1) = MV(0, 0) / detA;
+				iMV(1, 2) = -(MV(0, 0) * MV(1, 2) - MV(1, 0) * MV(0, 2)) / detA;
+				vec3 sample = shader_calib.right_eye / 2;
+				dvec2 mapped_sample;
+				calib.depth.apply_distortion_model(dvec2(iMV * sample), mapped_sample);
+				auto& sr3 = ref_sphere_renderer(ctx);
+				sr3.set_position(ctx, vec3(mapped_sample, 1.0));
+				std::cout << mapped_sample << std::endl;
+				sr3.set_radius(ctx, .05f);
+				sr3.render(ctx, 0, 1);
+			}
 		}
 
 			glEnable(GL_CULL_FACE);

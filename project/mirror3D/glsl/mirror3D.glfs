@@ -80,7 +80,8 @@ bool lookup_color(vec3 p, float eps, out vec4 c);
 vec3 ray_trace_pixel(vec3 ro, vec3 rd, out float depth);
 mat4 kinect_projection_matrix(float fx, float fy, float cx, float cy, int image_height, float near_clip, float far_clip);
 mat4 get_model_view_matrix_translation(vec3 ro);
-void march_along(vec3 ro, vec3 rd, out vec4 color, out float depth);
+void march_along(vec3 ro, vec3 rd, int color_channel, out vec4 color, out float depth);
+void part_of_march_along(vec3 ro, vec3 rd, int color_channel, out vec4 color, out float depth);
 vec4 kinect_to_world_space(vec2 uv);
 vec2 world_to_kinect_space(vec3 world_pos);
 bool map_sample_to_uv(in vec3 ro, out vec2 xd);
@@ -102,30 +103,39 @@ void main()
 	
 	// ray marching
 	} else if (coloring == 2) {
-		vec3 ro[3],rd[3];
-		vec4 rgb = vec4(0.0);
-		vec3 depth;
+		vec3 ro[3],rd[3], depth;
+		vec4 rgb;
 		compute_sub_pixel_rays(ro, rd);
 		
 		for (int i; i < 3; i++){
-			ro[i] = vec3(world_to_kinect_space(ro[i]), 0); // 1. use sample location in kinect space
-			march_along(ro[i], rd[i], rgb, depth[i]);
+			part_of_march_along(ro[i], rd[i], i, rgb, depth[i]);
 		}
 		finish_fragment(rgb, gl_FragCoord.z + fi.depth_offset);
-	}else if (coloring == 3) {
-		//finish_fragment(texture(color_image, pixel_to_image_coordinates(gl_FragCoord.xy, color_calib)));
+	
+	// working mirror with wrong coordinates
+	} else if (coloring == 3) {
 		vec3 ro[3], rd[3];
 		vec4 hit_color, final_color;
 		compute_sub_pixel_rays(ro, rd);
-		lookup_color(ro[0] + rd[0]*2, hit_color);
-		
-		final_color.x = hit_color.x;
-		lookup_color(ro[1] + rd[1]*2, hit_color);
-
-		final_color.y = hit_color.y;
-		lookup_color(ro[2] + rd[2]*2, hit_color);
-
+		for (int i; i < 3; i++){
+			lookup_color(ro[i] + rd[i], hit_color);
+			final_color[i] = hit_color[i];
+		}
 		// remember different modelview matricies for each view inbetween the eyes
 		finish_fragment(hit_color, gl_FragCoord.z + fi.depth_offset);
+	
+	// experimenting
+	} else if (coloring == 4) {
+		vec3 ro[3], rd[3];
+		vec4 hit_color, final_color;
+		compute_sub_pixel_rays(ro, rd);
+		for (int i; i < 3; i++){
+			vec3 a = ro[i] + rd[i];
+			ivec2 b = ivec2(a);
+			final_color = vec4(vec3(lookup_depth(b.xy)*10000u), 1.0);
+			
+		}
+		// remember different modelview matricies for each view inbetween the eyes
+		finish_fragment(final_color, gl_FragCoord.z + fi.depth_offset);
 	}
 }
