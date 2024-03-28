@@ -324,6 +324,8 @@ public:
 		add_member_control(this, "Debug Matrices", debug_matrices, "check");
 		add_member_control(this, "Interpolate View Matrix", shader_calib.interpolate_view_matrix, "check");
 		add_member_control(this, "View Eye Positions", visualize_eye_positions, "check");
+		add_member_control(this, "rc step size", step_size, "value_slider", "min=0;max=2;step=0.01");
+		add_member_control(this, "rc iterations", step, "value_slider", "min=0;max=20;step=1");
 
 		if (begin_tree_node("capture", is_running)) {
 			align("\a");
@@ -624,7 +626,7 @@ public:
 				iMV(1, 0) = -MV(1, 0) / detA;
 				iMV(1, 1) = MV(0, 0) / detA;
 				iMV(1, 2) = -(MV(0, 0) * MV(1, 2) - MV(1, 0) * MV(0, 2)) / detA;
-				vec3 sample = shader_calib.right_eye;
+				vec3 sample = shader_calib.right_eye + (step * step_size) * vec3(0,0,1);
 				dvec2 mapped_sample;
 				calib.depth.apply_distortion_model(dvec2(iMV * sample), mapped_sample);
 				
@@ -633,10 +635,14 @@ public:
 				}
 				else {
 					auto& sr3 = ref_sphere_renderer(ctx);
+					auto& sr4 = ref_sphere_renderer(ctx);
 					uint16_t depth = reinterpret_cast<const uint16_t&>(depth_frame.frame_data[((mapped_sample[1]*256+256) * depth_frame.width + (mapped_sample[0]*256+256)) * depth_frame.get_nr_bytes_per_pixel()]);
 					sr3.set_position(ctx, vec3(mapped_sample, calib.depth_scale * depth));
 					sr3.set_radius(ctx, .05f);
 					sr3.render(ctx, 0, 1);
+					sr4.set_position(ctx, vec3(mapped_sample, step*step_size));
+					sr4.set_radius(ctx, .05f);
+					sr4.render(ctx, 0, 1);
 				}
 			}
 		}
