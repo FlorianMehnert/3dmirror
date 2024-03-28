@@ -168,6 +168,9 @@ protected:
 	bool show_calculated_frustum_size = false;
 	bool do_raytracing = false;
 
+	float step_size = 0.1;
+	int step = 0;
+
 	enum ColorMode {
 		COLOR_TEX_SM, NORMAL, RAYTRACE
 	};
@@ -480,6 +483,10 @@ public:
 		ctx.draw_edges_of_faces(V, N, 0, F, FN, 0, 4, 4, false);
 	}
 
+	void sample_to_kinect_texture() {
+
+	}
+
 	void init_frame(cgv::render::context& ctx)
 	{
 			if (!view_ptr)
@@ -603,7 +610,7 @@ public:
 			sr2.set_position(ctx, shader_calib.right_eye/2);
 			sr2.render(ctx, 0, 1);
 			
-			// if this is what I think it is - this will map correctly
+			// should be model-view matrix of depth camera
 			cgv::math::fmat<double, 2U, 3U> MV = calib.depth.get_camera_matrix();
 			double detA = MV(0, 0) * MV(1, 1) - MV(0, 1) * MV(1, 0);
 
@@ -617,14 +624,20 @@ public:
 				iMV(1, 0) = -MV(1, 0) / detA;
 				iMV(1, 1) = MV(0, 0) / detA;
 				iMV(1, 2) = -(MV(0, 0) * MV(1, 2) - MV(1, 0) * MV(0, 2)) / detA;
-				vec3 sample = shader_calib.right_eye / 2;
+				vec3 sample = shader_calib.right_eye;
 				dvec2 mapped_sample;
 				calib.depth.apply_distortion_model(dvec2(iMV * sample), mapped_sample);
-				auto& sr3 = ref_sphere_renderer(ctx);
-				sr3.set_position(ctx, vec3(mapped_sample, 1.0));
-				std::cout << mapped_sample << std::endl;
-				sr3.set_radius(ctx, .05f);
-				sr3.render(ctx, 0, 1); 
+				
+				if (mapped_sample[0] < -1.0 || mapped_sample[0] > 1.0 || mapped_sample[1] > 1.0 || mapped_sample[1] < -1.0) {
+					std::cout << mapped_sample << std::endl;
+				}
+				else {
+					auto& sr3 = ref_sphere_renderer(ctx);
+					uint16_t depth = reinterpret_cast<const uint16_t&>(depth_frame.frame_data[((mapped_sample[1]*256+256) * depth_frame.width + (mapped_sample[0]*256+256)) * depth_frame.get_nr_bytes_per_pixel()]);
+					sr3.set_position(ctx, vec3(mapped_sample, calib.depth_scale * depth));
+					sr3.set_radius(ctx, .05f);
+					sr3.render(ctx, 0, 1);
+				}
 			}
 		}
 
