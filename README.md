@@ -28,6 +28,6 @@ git clone --recurse-submodules https://github.com/FlorianMehnert/3dmirror.git
 
 ## things to fix on windows
 - Ansii color support for Win10:
-    - press <kbd>![Windows Key][https://i.stack.imgur.com/B8Zit.png]</kbd> and type `regedit`
+    - press <kbd>![Windows Key](https://i.stack.imgur.com/B8Zit.png)</kbd> and type `regedit`
     - HKEY_CURRENT_USER -> Console -> <kbd>Right-Click</kbd> -> New -> DWORD -> VirtualTerminalLevel
     - set this new variable to 1
