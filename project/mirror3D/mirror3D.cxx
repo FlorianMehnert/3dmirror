@@ -638,6 +638,12 @@ public:
 					auto& sr4 = ref_sphere_renderer(ctx);
 					uint16_t depth = reinterpret_cast<const uint16_t&>(depth_frame.frame_data[((mapped_sample[1]*256+256) * depth_frame.width + (mapped_sample[0]*256+256)) * depth_frame.get_nr_bytes_per_pixel()]);
 					sr3.set_position(ctx, vec3(mapped_sample, calib.depth_scale * depth));
+					rgb8 looked_up_color = rgb8(255, 0,0);
+					bool inside_frame = rgbd::lookup_color(vec3(mapped_sample, calib.depth_scale* depth), looked_up_color, color_frame, calib);
+					std::cout << inside_frame << " if inside frame and color: " << looked_up_color << std::endl;
+					std::vector<rgb8> colors;
+					colors.push_back(looked_up_color);
+					sr3.set_color_array(ctx, colors);
 					sr3.set_radius(ctx, .05f);
 					sr3.render(ctx, 0, 1);
 					sr4.set_position(ctx, vec3(mapped_sample, step*step_size));
