@@ -25,3 +25,9 @@ git clone --recurse-submodules https://github.com/FlorianMehnert/3dmirror.git
 3. drag the "build" folder to [`define_system_variables.bat`](../cgv/define_system_variables.bat) and select j for visual studio 2022
 4. open the batch file [`define_platform.bat`](../cgv/define_platform.bat) and set to 64
 5. bind the .pj extension to the [`generate_makefiles.bat`](../cgv/bin/generate_makefiles.bat)
+
+## things to fix on windows
+- Ansii color support for Win10:
+    - press <kbd>![Windows Key][https://i.stack.imgur.com/B8Zit.png]</kbd> and type `regedit`
+    - HKEY_CURRENT_USER -> Console -> <kbd>Right-Click</kbd> -> New -> DWORD -> VirtualTerminalLevel
+    - set this new variable to 1
