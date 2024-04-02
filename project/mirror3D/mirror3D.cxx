@@ -167,7 +167,7 @@ protected:
 	bool show_camera = false;
 	bool show_calculated_frustum_size = false;
 	bool do_raytracing = false;
-	cgv::math::fmat<double, 2U, 3U> iMV;
+	mat3 iMV;
 
 	float step_size = 0.1;
 	int step = 0;
@@ -486,12 +486,12 @@ public:
 		ctx.draw_edges_of_faces(V, N, 0, F, FN, 0, 4, 4, false);
 	}
 
-	 bool calculate_inverse_modelview_matrix_rgbd_depth(cgv::math::fmat<double, 2U, 3U> iMV) {
+	 bool calculate_inverse_modelview_matrix_rgbd_depth() {
 		// get: MV matrix of depth camera
-		cgv::math::fmat<double, 2U, 3U> MV = calib.depth.get_camera_matrix();
+		mat23 MV = calib.depth.get_camera_matrix();
 
 		// Check if the matrix is invertible (determinant not equal to zero) + inverse calculation (there exist functions for that in GPU)
-		double detA = MV(0, 0) * MV(1, 1) - MV(0, 1) * MV(1, 0);
+		float detA = MV(0, 0) * MV(1, 1) - MV(0, 1) * MV(1, 0);
 		if (detA != 0) {
 			iMV(0, 0) = MV(1, 1) / detA;
 			iMV(0, 1) = -MV(0, 1) / detA;
@@ -583,7 +583,7 @@ public:
 			pr.ref_prog().set_uniform(ctx, "render_quads", render_quads);
 			pr.ref_prog().set_uniform(ctx, "coloring", (int)coloring);
 			shader_calib.set_uniforms(ctx, pr.ref_prog(), *stereo_view_ptr);
-			calculate_inverse_modelview_matrix_rgbd_depth(iMV);
+			calculate_inverse_modelview_matrix_rgbd_depth();
 			pr.ref_prog().set_uniform(ctx, "iMV_akd", iMV);
 			pr.ref_prog().set_uniform(ctx, "eye_separation", shader_calib.eye_separation_factor);
 			
@@ -626,15 +626,13 @@ public:
 			sr2.render(ctx, 0, 1);
 
 			// define sample (which would be ro + rd)
-			vec3 sample = shader_calib.right_eye + (step * step_size) * vec3(0,0,1);
+			vec3 sample = shader_calib.right_eye + (step * step_size) * vec3(0, 1.0f, 0);
 			dvec2 mapped_sample;
 			
-
 			// map sample into space of depth camera: iMV * sample -> apply_distortion_model()
 			calib.depth.apply_distortion_model(dvec2(iMV * sample), mapped_sample);
 
 			if (mapped_sample[0] < -1.0 || mapped_sample[0] > 1.0 || mapped_sample[1] > 1.0 || mapped_sample[1] < -1.0) {
-				std::cout << mapped_sample << std::endl;
 			}
 			else {
 				auto& sr3 = ref_sphere_renderer(ctx);

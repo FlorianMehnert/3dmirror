@@ -1,4 +1,4 @@
-#version 330 core
+#version 400
 
 #define OUT_OF_BOUNDS 1
 #define DIVISION_BY_ZERO 2
@@ -11,7 +11,7 @@ uniform sampler2D depth_image;
 uniform sampler2D distortion_map;
 uniform sampler2D color_image;
 uniform int y2;
-uniform mat2x3 iMV_akd;
+uniform mat3 iMV_akd;
 
 // this is adapted point.glfs
 
@@ -104,16 +104,49 @@ void main()
 	
 	// ray marching
 	} else if (coloring == 2) {
-		vec3 ro[3],rd[3], depth;
-		vec4 rgb;
+		vec3 ro[3],rd[3], projected_point, current_ray_location;
+		vec4 rgb, tmp_color;
+		mat2 J;
+		vec2 mapped_sample;
+		bool ray_is_behind_projection = false; // equals to no surface
+		int max_steps = 30;
+		float step_size = 0.1;
+		float d;
+		
 		compute_sub_pixel_rays(ro, rd);
-		// depth_calib.get_inverse_modelview_matrix();
-		// apply_distortion_model();
-
 		for (int i; i < 3; i++){
-			part_of_march_along(ro[i], rd[i], i, rgb, depth[i]);
+			// start to march
+			for (int s = 0; s < max_steps; s++){
+				
+				// 1. map sample
+				invert_distortion_model(vec2((ro[i] + rd[i])), mapped_sample, true, depth_calib);
+				
+				// 2. discard of outside
+				if (mapped_sample[0] < -1.0 || mapped_sample[0] > 1.0 || mapped_sample[1] > 1.0 || mapped_sample[1] < -1.0) {
+					discard;
+				}else{
+					// TOOD: add 3. check if depthcheck - maybe if depth is max range?
+					d = lookup_depth(ivec2(mapped_sample));
+					current_ray_location = (vec4(ro[i] + (normalize(rd[i]) * s * step_size), 1.0)).xyz;					
+					construct_point(mapped_sample, d, projected_point);
+					// 4. compare projected depth with ray depth
+					if (current_ray_location.z > projected_point.z){
+						ray_is_behind_projection = true;
+						
+						// go back one step
+						vec4 loc = get_inverse_modelview_projection_matrix() * vec4(current_ray_location, 1.0);
+						if (lookup_color(loc.xyz,tmp_color)){
+							rgb[i] = tmp_color[i];
+						}else{
+							rgb[i] = 1.0f;
+						}
+						
+						break;
+					}
+				}
+			}
 		}
-		finish_fragment(rgb, gl_FragCoord.z + fi.depth_offset);
+		finish_fragment(fi.color + rgb, d + fi.depth_offset);
 	
 	// working mirror with wrong coordinates
 	} else if (coloring == 3) {
