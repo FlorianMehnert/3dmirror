@@ -11,6 +11,7 @@ uniform sampler2D depth_image;
 uniform sampler2D distortion_map;
 uniform sampler2D color_image;
 uniform int y2;
+uniform mat2x3 iMV_akd;
 
 // this is adapted point.glfs
 
@@ -106,7 +107,9 @@ void main()
 		vec3 ro[3],rd[3], depth;
 		vec4 rgb;
 		compute_sub_pixel_rays(ro, rd);
-		
+		// depth_calib.get_inverse_modelview_matrix();
+		// apply_distortion_model();
+
 		for (int i; i < 3; i++){
 			part_of_march_along(ro[i], rd[i], i, rgb, depth[i]);
 		}

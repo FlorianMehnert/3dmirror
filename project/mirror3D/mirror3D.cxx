@@ -167,6 +167,7 @@ protected:
 	bool show_camera = false;
 	bool show_calculated_frustum_size = false;
 	bool do_raytracing = false;
+	cgv::math::fmat<double, 2U, 3U> iMV;
 
 	float step_size = 0.1;
 	int step = 0;
@@ -582,7 +583,8 @@ public:
 			pr.ref_prog().set_uniform(ctx, "render_quads", render_quads);
 			pr.ref_prog().set_uniform(ctx, "coloring", (int)coloring);
 			shader_calib.set_uniforms(ctx, pr.ref_prog(), *stereo_view_ptr);
-			
+			calculate_inverse_modelview_matrix_rgbd_depth(iMV);
+			pr.ref_prog().set_uniform(ctx, "iMV_akd", iMV);
 			pr.ref_prog().set_uniform(ctx, "eye_separation", shader_calib.eye_separation_factor);
 			
 			pr.draw(ctx, 0, sP.size()); // only using sP size with geometryless rendering
@@ -602,9 +604,6 @@ public:
 			ctx.ref_surface_shader_program().disable(ctx);
 		}
 		if (show_calculated_frustum_size) {
-			// distortion center is 0,0
-			// principal point x is 
-			//std::cout << rgbd::rgbd_calibration().color.dc << rgbd::rgbd_calibration().color.k << rgbd::rgbd_calibration().color.p[0] << std::endl;
 			auto& bwr = ref_box_wire_renderer(ctx);
 			vec3 p1;
 			vec3 p2;
@@ -629,8 +628,7 @@ public:
 			// define sample (which would be ro + rd)
 			vec3 sample = shader_calib.right_eye + (step * step_size) * vec3(0,0,1);
 			dvec2 mapped_sample;
-			cgv::math::fmat<double, 2U, 3U> iMV;
-			calculate_inverse_modelview_matrix_rgbd_depth(iMV);
+			
 
 			// map sample into space of depth camera: iMV * sample -> apply_distortion_model()
 			calib.depth.apply_distortion_model(dvec2(iMV * sample), mapped_sample);
@@ -645,7 +643,6 @@ public:
 				sr3.set_position(ctx, vec3(mapped_sample, calib.depth_scale * depth));
 				rgb8 looked_up_color = rgb8(255, 0,0);
 				bool inside_frame = rgbd::lookup_color(vec3(mapped_sample, calib.depth_scale* depth), looked_up_color, color_frame, calib);
-				std::cout << inside_frame << " if inside frame and color: " << looked_up_color << std::endl;
 				std::vector<rgb8> colors;
 				colors.push_back(looked_up_color);
 				sr3.set_color_array(ctx, colors);
