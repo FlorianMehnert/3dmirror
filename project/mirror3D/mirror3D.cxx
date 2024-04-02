@@ -485,8 +485,22 @@ public:
 		ctx.draw_edges_of_faces(V, N, 0, F, FN, 0, 4, 4, false);
 	}
 
-	void sample_to_kinect_texture() {
+	 bool calculate_inverse_modelview_matrix_rgbd_depth(cgv::math::fmat<double, 2U, 3U> iMV) {
+		// get: MV matrix of depth camera
+		cgv::math::fmat<double, 2U, 3U> MV = calib.depth.get_camera_matrix();
 
+		// Check if the matrix is invertible (determinant not equal to zero) + inverse calculation (there exist functions for that in GPU)
+		double detA = MV(0, 0) * MV(1, 1) - MV(0, 1) * MV(1, 0);
+		if (detA != 0) {
+			iMV(0, 0) = MV(1, 1) / detA;
+			iMV(0, 1) = -MV(0, 1) / detA;
+			iMV(0, 2) = (MV(0, 1) * MV(1, 2) - MV(1, 1) * MV(0, 2)) / detA;
+			iMV(1, 0) = -MV(1, 0) / detA;
+			iMV(1, 1) = MV(0, 0) / detA;
+			iMV(1, 2) = -(MV(0, 0) * MV(1, 2) - MV(1, 0) * MV(0, 2)) / detA;
+			return true;
+		}
+		return false;
 	}
 
 	void init_frame(cgv::render::context& ctx)
@@ -611,48 +625,37 @@ public:
 			sr2.set_radius(ctx, .1f);
 			sr2.set_position(ctx, shader_calib.right_eye/2);
 			sr2.render(ctx, 0, 1);
-			
-			// should be model-view matrix of depth camera
-			cgv::math::fmat<double, 2U, 3U> MV = calib.depth.get_camera_matrix();
-			double detA = MV(0, 0) * MV(1, 1) - MV(0, 1) * MV(1, 0);
 
-			// Check if the matrix is invertible (determinant not equal to zero)
-			if (detA != 0) {
-				// Calculate the inverse of the matrix
-				cgv::math::fmat<double, 2U, 3U> iMV;
-				iMV(0, 0) = MV(1, 1) / detA;
-				iMV(0, 1) = -MV(0, 1) / detA;
-				iMV(0, 2) = (MV(0, 1) * MV(1, 2) - MV(1, 1) * MV(0, 2)) / detA;
-				iMV(1, 0) = -MV(1, 0) / detA;
-				iMV(1, 1) = MV(0, 0) / detA;
-				iMV(1, 2) = -(MV(0, 0) * MV(1, 2) - MV(1, 0) * MV(0, 2)) / detA;
-				vec3 sample = shader_calib.right_eye + (step * step_size) * vec3(0,0,1);
-				dvec2 mapped_sample;
-				calib.depth.apply_distortion_model(dvec2(iMV * sample), mapped_sample);
-				
-				if (mapped_sample[0] < -1.0 || mapped_sample[0] > 1.0 || mapped_sample[1] > 1.0 || mapped_sample[1] < -1.0) {
-					std::cout << mapped_sample << std::endl;
-				}
-				else {
-					auto& sr3 = ref_sphere_renderer(ctx);
-					auto& sr4 = ref_sphere_renderer(ctx);
-					uint16_t depth = reinterpret_cast<const uint16_t&>(depth_frame.frame_data[((mapped_sample[1]*256+256) * depth_frame.width + (mapped_sample[0]*256+256)) * depth_frame.get_nr_bytes_per_pixel()]);
-					sr3.set_position(ctx, vec3(mapped_sample, calib.depth_scale * depth));
-					rgb8 looked_up_color = rgb8(255, 0,0);
-					bool inside_frame = rgbd::lookup_color(vec3(mapped_sample, calib.depth_scale* depth), looked_up_color, color_frame, calib);
-					std::cout << inside_frame << " if inside frame and color: " << looked_up_color << std::endl;
-					std::vector<rgb8> colors;
-					colors.push_back(looked_up_color);
-					sr3.set_color_array(ctx, colors);
-					sr3.set_radius(ctx, .05f);
-					sr3.render(ctx, 0, 1);
-					sr4.set_position(ctx, vec3(mapped_sample, step*step_size));
-					sr4.set_radius(ctx, .05f);
-					sr4.render(ctx, 0, 1);
-				}
+			// define sample (which would be ro + rd)
+			vec3 sample = shader_calib.right_eye + (step * step_size) * vec3(0,0,1);
+			dvec2 mapped_sample;
+			cgv::math::fmat<double, 2U, 3U> iMV;
+			calculate_inverse_modelview_matrix_rgbd_depth(iMV);
+
+			// map sample into space of depth camera: iMV * sample -> apply_distortion_model()
+			calib.depth.apply_distortion_model(dvec2(iMV * sample), mapped_sample);
+
+			if (mapped_sample[0] < -1.0 || mapped_sample[0] > 1.0 || mapped_sample[1] > 1.0 || mapped_sample[1] < -1.0) {
+				std::cout << mapped_sample << std::endl;
+			}
+			else {
+				auto& sr3 = ref_sphere_renderer(ctx);
+				auto& sr4 = ref_sphere_renderer(ctx);
+				uint16_t depth = reinterpret_cast<const uint16_t&>(depth_frame.frame_data[((mapped_sample[1]*256+256) * depth_frame.width + (mapped_sample[0]*256+256)) * depth_frame.get_nr_bytes_per_pixel()]);
+				sr3.set_position(ctx, vec3(mapped_sample, calib.depth_scale * depth));
+				rgb8 looked_up_color = rgb8(255, 0,0);
+				bool inside_frame = rgbd::lookup_color(vec3(mapped_sample, calib.depth_scale* depth), looked_up_color, color_frame, calib);
+				std::cout << inside_frame << " if inside frame and color: " << looked_up_color << std::endl;
+				std::vector<rgb8> colors;
+				colors.push_back(looked_up_color);
+				sr3.set_color_array(ctx, colors);
+				sr3.set_radius(ctx, .05f);
+				sr3.render(ctx, 0, 1);
+				sr4.set_position(ctx, vec3(mapped_sample, step*step_size));
+				sr4.set_radius(ctx, .05f);
+				sr4.render(ctx, 0, 1);
 			}
 		}
-
 			glEnable(GL_CULL_FACE);
 		}
 		
