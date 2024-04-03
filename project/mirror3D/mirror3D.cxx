@@ -167,7 +167,8 @@ protected:
 	bool show_camera = false;
 	bool show_calculated_frustum_size = false;
 	bool do_raytracing = false;
-	mat3 iMV;
+	float view = 0;
+	mat23 iMV, MV;
 
 	float step_size = 0.1;
 	int step = 0;
@@ -327,6 +328,7 @@ public:
 		add_member_control(this, "View Eye Positions", visualize_eye_positions, "check");
 		add_member_control(this, "rc step size", step_size, "value_slider", "min=0;max=2;step=0.01");
 		add_member_control(this, "rc iterations", step, "value_slider", "min=0;max=20;step=1");
+		add_member_control(this, "current_view", view, "value_slider", "min=-1;max=1;step=.01");
 
 		if (begin_tree_node("capture", is_running)) {
 			align("\a");
@@ -488,17 +490,17 @@ public:
 
 	 bool calculate_inverse_modelview_matrix_rgbd_depth() {
 		// get: MV matrix of depth camera
-		mat23 MV = calib.depth.get_camera_matrix();
+		mat23 MV_depth = calib.depth.get_camera_matrix();
 
 		// Check if the matrix is invertible (determinant not equal to zero) + inverse calculation (there exist functions for that in GPU)
-		float detA = MV(0, 0) * MV(1, 1) - MV(0, 1) * MV(1, 0);
+		float detA = MV_depth(0, 0) * MV_depth(1, 1) - MV_depth(0, 1) * MV_depth(1, 0);
 		if (detA != 0) {
-			iMV(0, 0) = MV(1, 1) / detA;
-			iMV(0, 1) = -MV(0, 1) / detA;
-			iMV(0, 2) = (MV(0, 1) * MV(1, 2) - MV(1, 1) * MV(0, 2)) / detA;
-			iMV(1, 0) = -MV(1, 0) / detA;
-			iMV(1, 1) = MV(0, 0) / detA;
-			iMV(1, 2) = -(MV(0, 0) * MV(1, 2) - MV(1, 0) * MV(0, 2)) / detA;
+			iMV(0, 0) = MV_depth(1, 1) / detA;
+			iMV(0, 1) = -MV_depth(0, 1) / detA;
+			iMV(0, 2) = (MV_depth(0, 1) * MV_depth(1, 2) - MV_depth(1, 1) * MV_depth(0, 2)) / detA;
+			iMV(1, 0) = -MV_depth(1, 0) / detA;
+			iMV(1, 1) = MV_depth(0, 0) / detA;
+			iMV(1, 2) = -(MV_depth(0, 0) * MV_depth(1, 2) - MV_depth(1, 0) * MV_depth(0, 2)) / detA;
 			return true;
 		}
 		return false;
@@ -584,7 +586,8 @@ public:
 			pr.ref_prog().set_uniform(ctx, "coloring", (int)coloring);
 			shader_calib.set_uniforms(ctx, pr.ref_prog(), *stereo_view_ptr);
 			calculate_inverse_modelview_matrix_rgbd_depth();
-			pr.ref_prog().set_uniform(ctx, "iMV_akd", iMV);
+			pr.ref_prog().set_uniform(ctx, "iMV_kinect", iMV);
+			pr.ref_prog().set_uniform(ctx, "MV_kinect", calib.depth.get_camera_matrix());
 			pr.ref_prog().set_uniform(ctx, "eye_separation", shader_calib.eye_separation_factor);
 			
 			pr.draw(ctx, 0, sP.size()); // only using sP size with geometryless rendering
@@ -618,15 +621,17 @@ public:
 		if (visualize_eye_positions) {
 			auto& sr1 = ref_sphere_renderer(ctx);
 			auto& sr2 = ref_sphere_renderer(ctx);
-			sr1.set_radius(ctx,.1f);
+			sr1.set_radius(ctx,.05f);
 			sr1.set_position(ctx, shader_calib.left_eye/2);
 			sr1.render(ctx, 0, 1);
-			sr2.set_radius(ctx, .1f);
-			sr2.set_position(ctx, shader_calib.right_eye/2);
+
+			sr2.set_position(ctx, shader_calib.right_eye / 2);
+			sr2.set_radius(ctx, .05f);
+
 			sr2.render(ctx, 0, 1);
 
 			// define sample (which would be ro + rd)
-			vec3 sample = shader_calib.right_eye + (step * step_size) * vec3(0, 1.0f, 0);
+			vec3 sample = cgv::math::lerp(shader_calib.left_eye/2, shader_calib.right_eye/2, view) + step * step_size * vec3(0, 0, 1.0f);
 			dvec2 mapped_sample;
 			
 			// map sample into space of depth camera: iMV * sample -> apply_distortion_model()
@@ -638,7 +643,7 @@ public:
 				auto& sr3 = ref_sphere_renderer(ctx);
 				auto& sr4 = ref_sphere_renderer(ctx);
 				uint16_t depth = reinterpret_cast<const uint16_t&>(depth_frame.frame_data[((mapped_sample[1]*256+256) * depth_frame.width + (mapped_sample[0]*256+256)) * depth_frame.get_nr_bytes_per_pixel()]);
-				sr3.set_position(ctx, vec3(mapped_sample, calib.depth_scale * depth));
+				sr3.set_position(ctx, vec3(sample));
 				rgb8 looked_up_color = rgb8(255, 0,0);
 				bool inside_frame = rgbd::lookup_color(vec3(mapped_sample, calib.depth_scale* depth), looked_up_color, color_frame, calib);
 				std::vector<rgb8> colors;

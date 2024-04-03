@@ -11,7 +11,10 @@ uniform sampler2D depth_image;
 uniform sampler2D distortion_map;
 uniform sampler2D color_image;
 uniform int y2;
-uniform mat3 iMV_akd;
+uniform mat2x3 iMVP_kinect;
+uniform mat2x3 MVP_kinect;
+uniform vec2 viewport_dims;
+uniform bool interpolate_view_matrix;
 
 // this is adapted point.glfs
 
@@ -55,6 +58,8 @@ void finish_fragment(vec4 color, float depth);
 // ***** begin interface of holo_disp.glfs ****************************
 void compute_sub_pixel_rays(out vec3 ro[3], out vec3 rd[3]);
 bool finalize_sub_pixel_fragment(in vec3 rgb, in vec3 depth);
+void stereo_translate_modelview_matrix(in float eye, in out mat4 M);
+float view_from_fragment_component (const vec2 frag, const int component);
 // ***** end interface of holo_disp.glfs ******************************
 
 // ***** begin interface of view.glsl *********************************
@@ -105,7 +110,7 @@ void main()
 	// ray marching
 	} else if (coloring == 2) {
 		vec3 ro[3],rd[3], projected_point, current_ray_location;
-		vec4 rgb, tmp_color;
+		vec4 rgb, tmp_color, eye_sample;
 		mat2 J;
 		vec2 mapped_sample;
 		bool ray_is_behind_projection = false; // equals to no surface
@@ -118,9 +123,20 @@ void main()
 			// start to march
 			for (int s = 0; s < max_steps; s++){
 				
+				// reusing holo_disp for correct matrices MV and P
+				vec2 uv = gl_FragCoord.xy / viewport_dims;
+				float view = view_from_fragment_component(uv, i);
+				mat4 MV = get_modelview_matrix();
+				stereo_translate_modelview_matrix(view, MV);
+
 				// 1. map sample
-				vec2 eye_sample = (get_modelview_matrix() * vec4(ro[i], 1.0) + vec4(rd[i], 1.0)).xy;
-				apply_distortion_model(eye_sample, mapped_sample, J, depth_calib);
+				if (interpolate_view_matrix)
+					eye_sample = MV * (vec4(ro[i], 1.0) + vec4(rd[i], 1.0));
+				else
+					eye_sample = vec4(ro[i], 1.0) + vec4(rd[i], 1.0);
+
+				// 1.5 deal with distortion
+				apply_distortion_model(eye_sample.xy, mapped_sample, J, depth_calib);
 				
 				// 2. discard of outside
 				if (mapped_sample[0] < -1.0 || mapped_sample[0] > 1.0 || mapped_sample[1] > 1.0 || mapped_sample[1] < -1.0) {
@@ -128,8 +144,11 @@ void main()
 				}else{
 					// TOOD: add 3. check if depthcheck - maybe if depth is max range?
 					d = lookup_depth(ivec2(mapped_sample));
-					current_ray_location = (vec4(ro[i] + (normalize(rd[i]) * s * step_size), 1.0)).xyz;					
+					current_ray_location = ro[i] + (rd[i] * s * step_size);					
 					construct_point(mapped_sample, d, projected_point);
+					lookup_color(projected_point, tmp_color);
+					rgb[i] = tmp_color[i];
+					break;
 					// 4. compare projected depth with ray depth
 					if (current_ray_location.z > projected_point.z){
 						ray_is_behind_projection = true;
@@ -139,7 +158,7 @@ void main()
 						if (lookup_color(loc.xyz,tmp_color)){
 							rgb[i] = tmp_color[i];
 						}else{
-							rgb[i] = 1.0f;
+							//rgb[i] = 1.0f;
 						}
 						break;
 					}
