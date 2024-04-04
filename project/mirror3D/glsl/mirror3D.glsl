@@ -291,6 +291,7 @@ mat4 get_modelview_matrix_view(int color_channel){
 		return MV;
 }
 
+// ***** start of intersecting pixel ***** 
 float point_in_or_on(vec3 p1, vec3 p2, vec3 a, vec3 b){
 	vec3 cp1 = cross(b-a, p1 - a);
 	vec3 cp2 = cross(b-a, p2 - a);
@@ -336,6 +337,7 @@ vec3 cpp(ivec2 xp){
 bool intersect_pixel(Ray ray, ivec2 xp){
 	return intersect_quad(ray, cpp(xp), cpp(xp+ivec2(0,1)), cpp(xp+ivec2(1,1)), cpp(xp+ivec2(1,0)));;
 }
+// ***** end of intersecting pixel ***** 
 
 // brute force approach - no raymarching pure iterating over depth image
 vec4 intersect_depth_image_bf(){
