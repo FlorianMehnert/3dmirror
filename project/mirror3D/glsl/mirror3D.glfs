@@ -10,11 +10,14 @@ uniform int coloring;
 uniform sampler2D depth_image;
 uniform sampler2D distortion_map;
 uniform sampler2D color_image;
-uniform int y2;
-uniform mat2x3 iMVP_kinect;
-uniform mat2x3 MVP_kinect;
+uniform mat4 P_kinect;
 uniform vec2 viewport_dims;
 uniform bool interpolate_view_matrix;
+uniform bool undistort_first;
+uniform bool do_lookup_depth;
+uniform float depth_in_which_to_lookup;
+uniform float depth_scale = 0.001;
+uniform uint scale;
 
 // this is adapted point.glfs
 
@@ -91,10 +94,76 @@ void part_of_march_along(vec3 ro, vec3 rd, int color_channel, out vec4 color, ou
 vec4 kinect_to_world_space(vec2 uv);
 vec2 world_to_kinect_space(vec3 world_pos);
 bool map_sample_to_uv(in vec3 ro, out vec2 xd);
+mat4 get_modelview_matrix_view(int color_channel);
+bool my_lookup_color(vec3 p, out vec4 c);
 // ***** end interface of mirror3D.glsl *****************************
 
 uniform calibration color_calib;
 uniform calibration depth_calib;
+
+float point_in_or_on(vec3 p1, vec3 p2, vec3 a, vec3 b){
+	vec3 cp1 = cross(b-a, p1 - a);
+	vec3 cp2 = cross(b-a, p2 - a);
+	return step(0.0, dot(cp1, cp2));
+}
+bool point_in_triangle(vec3 px, vec3 p0, vec3 p1, vec3 p2){
+	return bool(point_in_or_on(px, p0, p1, p2) * point_in_or_on(px, p1, p2, p0) * point_in_or_on(px, p2, p0, p1));
+}
+
+struct Ray{
+	vec3 origin;
+	vec3 direction;
+};
+
+vec3 intersect_plane(Ray ray, vec3 p0, vec3 p1, vec3 p2){
+	vec3 d = ray.direction;
+	vec3 n = cross(p1-p0,p2-p0);
+	vec3 x = ray.origin + d*dot(p0-ray.origin, n)/dot(d,n);
+	return x;
+}
+
+bool triangle_intersection(Ray ray, vec3 p0, vec3 p1, vec3 p2){
+	vec3 x = intersect_plane(ray, p0, p1, p2);
+	return point_in_triangle(x, p0, p1,p2);
+}
+
+bool intersect_quad(Ray ray, vec3 p0, vec3 p1, vec3 p2, vec3 p3){
+	return triangle_intersection(ray, p0, p2, p1) || triangle_intersection(ray, p0, p3, p2);;
+}
+
+float get_depth(ivec2 xp){
+	return 65535.0 * texture(depth_image, pixel_to_texture_coordinates(xp, depth_calib)).r;
+}
+
+// costruct pixel point
+vec3 cpp(ivec2 xp){
+	float depth = get_depth(xp);
+	vec3 p;
+	construct_point(xp, depth, p);
+	return p;
+}
+
+bool intersect_pixel(Ray ray, ivec2 xp){
+	return intersect_quad(ray, cpp(xp), cpp(xp+ivec2(0,1)), cpp(xp+ivec2(1,1)), cpp(xp+ivec2(1,0)));;
+}
+
+// brute force approach - no raymarching pure iterating over depth image
+vec4 intersect_depth_image_bf(){
+	vec3 ro[3], rd[3];
+	vec4 final_color = vec4(1,0,1,1);
+	for (int c = 0; c < 3; c++){
+		compute_sub_pixel_rays(ro, rd);
+		for (int i = 240; i < 274; i++){
+			for (int j = 250; j < 264; j++){
+				if (intersect_pixel(Ray(ro[c],rd[c]), ivec2(j,i))){
+					lookup_color(cpp(ivec2(j,i)), final_color);
+					final_color[c] = final_color[c];
+				}
+			}
+		}
+	}
+	return final_color;
+}
 
 void main()
 {
@@ -107,72 +176,16 @@ void main()
 
 		finish_fragment(vec4(fi.normal.xyz * 10000, 1.0), gl_FragCoord.z + fi.depth_offset);
 	
-	// ray marching
+	// iterating over pixels in depth texture
 	} else if (coloring == 2) {
-		vec3 ro[3],rd[3], projected_point, current_ray_location;
-		vec4 rgb, tmp_color, eye_sample;
-		mat2 J;
-		vec2 mapped_sample;
-		bool ray_is_behind_projection = false; // equals to no surface
-		int max_steps = 3000;
-		float step_size = 0.01;
-		float d;
-		
-		compute_sub_pixel_rays(ro, rd);
-		for (int i; i < 3; i++){
-			// start to march
-			for (int s = 0; s < max_steps; s++){
-				
-				// reusing holo_disp for correct matrices MV and P
-				vec2 uv = gl_FragCoord.xy / viewport_dims;
-				float view = view_from_fragment_component(uv, i);
-				mat4 MV = get_modelview_matrix();
-				stereo_translate_modelview_matrix(view, MV);
-
-				// 1. map sample
-				if (interpolate_view_matrix)
-					eye_sample = MV * (vec4(ro[i], 1.0) + vec4(rd[i], 1.0));
-				else
-					eye_sample = vec4(ro[i], 1.0) + vec4(rd[i], 1.0);
-
-				// 1.5 deal with distortion
-				apply_distortion_model(eye_sample.xy, mapped_sample, J, depth_calib);
-				
-				// 2. discard of outside
-				if (mapped_sample[0] < -1.0 || mapped_sample[0] > 1.0 || mapped_sample[1] > 1.0 || mapped_sample[1] < -1.0) {
-					discard;
-				}else{
-					// TOOD: add 3. check if depthcheck - maybe if depth is max range?
-					d = lookup_depth(ivec2(mapped_sample));
-					current_ray_location = ro[i] + (rd[i] * s * step_size);					
-					construct_point(mapped_sample, d, projected_point);
-					lookup_color(projected_point, tmp_color);
-					rgb[i] = tmp_color[i];
-					break;
-					// 4. compare projected depth with ray depth
-					if (current_ray_location.z > projected_point.z){
-						ray_is_behind_projection = true;
-						
-						// go back one step
-						vec4 loc = get_inverse_modelview_projection_matrix() * vec4(current_ray_location, 1.0);
-						if (lookup_color(loc.xyz,tmp_color)){
-							rgb[i] = tmp_color[i];
-						}else{
-							//rgb[i] = 1.0f;
-						}
-						break;
-					}
-				}
-			}
-		}
-		finish_fragment(fi.color + rgb, gl_FragCoord.z + fi.depth_offset);
+		finish_fragment(intersect_depth_image_bf(), gl_FragCoord.z + fi.depth_offset);
 	
 	// working mirror with wrong coordinates
 	} else if (coloring == 3) {
 		vec3 ro[3], rd[3];
 		vec4 hit_color, final_color;
 		compute_sub_pixel_rays(ro, rd);
-		for (int i; i < 3; i++){
+		for (int i=0; i < 3; i++){
 			lookup_color(ro[i] + rd[i], hit_color);
 			final_color[i] = hit_color[i];
 		}
@@ -181,16 +194,22 @@ void main()
 	
 	// experimenting
 	} else if (coloring == 4) {
-		vec3 ro[3], rd[3];
-		vec4 hit_color, final_color;
+		vec3 ro[3], rd[3], eye_sample, eye_sample_clip_space;
+		vec4 final_color, hit_color = vec4(1,0,0,1);
 		compute_sub_pixel_rays(ro, rd);
-		for (int i; i < 3; i++){
-			vec3 a = ro[i] + rd[i];
-			ivec2 b = ivec2(a);
-			final_color = vec4(vec3(lookup_depth(b.xy)*10000u), 1.0);
+		for (int i=0; i < 3; i++){
+			vec2 mapped_sample;
+			eye_sample = vec3(ro[i] + rd[i]);
+			eye_sample_clip_space = (P_kinect * vec4(eye_sample, 1.0)).xyz;
 			
+			vec3 p;
+			if (construct_point((eye_sample_clip_space*depth_scale).xy, depth_in_which_to_lookup, p)){
+				if (lookup_color(p, hit_color)){
+					final_color[i] = hit_color[i];
+				}
+			}
 		}
 		// remember different modelview matricies for each view inbetween the eyes
-		finish_fragment(final_color, gl_FragCoord.z + fi.depth_offset);
+		finish_fragment(fi.color + final_color, gl_FragCoord.z + fi.depth_offset);
 	}
 }

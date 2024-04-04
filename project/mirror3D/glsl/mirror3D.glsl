@@ -55,8 +55,21 @@ bool lookup_color(vec3 p, out vec4 c);
 bool lookup_color(vec3 p, float eps, out vec4 c);
 // ***** end interface of rgbd.glsl ***********************************
 
+// ***** begin interface of holo_disp.glfs ****************************
+void compute_sub_pixel_rays(out vec3 ro[3], out vec3 rd[3]);
+bool finalize_sub_pixel_fragment(in vec3 rgb, in vec3 depth);
+void stereo_translate_modelview_matrix(in float eye, in out mat4 M);
+float view_from_fragment_component (const vec2 frag, const int component);
+// ***** end interface of holo_disp.glfs ******************************
+
 uniform sampler2D depth_image;
+uniform sampler2D color_image;
 uniform calibration depth_calib;
+uniform calibration color_calib;
+uniform vec2 viewport_dims;
+uniform mat3 color_rotation;
+uniform vec3 color_translation;
+uniform float depth_scale;
 
 vec3 ray_trace_pixel(vec3 ro, vec3 rd, out float depth) {
 	vec3 pos, nor; // hit position and normal
@@ -267,3 +280,24 @@ void part_of_march_along(vec3 ro, vec3 rd, int color_channel, out vec4 color, ou
 		t += 0.01; // maybe adjust step size
 	}
 }
+
+mat4 get_modelview_matrix_view(int color_channel){
+		// reusing holo_disp for correct matrices MV and P
+		vec2 uv = gl_FragCoord.xy / viewport_dims;
+		float view = view_from_fragment_component(uv, color_channel);
+		mat4 MV = get_modelview_matrix();
+		stereo_translate_modelview_matrix(view, MV);
+		return MV;
+}
+
+bool my_lookup_color(vec3 p, out vec4 c){
+	p = ((p + depth_scale*color_translation)*color_rotation);
+		vec2 xu;
+		vec2 xd = vec2(p[0] / p[2], p[1] / p[2]);
+		vec2 xp = image_to_pixel_coordinates(xd, color_calib);
+		if (xp[0] < 0.0 || xp[1] < 0.0 || xp[0] >= float(color_calib.w) || xp[1] >= float(color_calib.h))
+			return false;
+		c = texture(color_image, pixel_to_texture_coordinates(xp, color_calib));
+		return true;
+}
+

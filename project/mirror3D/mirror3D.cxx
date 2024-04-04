@@ -168,15 +168,18 @@ protected:
 	bool show_calculated_frustum_size = false;
 	bool do_raytracing = false;
 	float view = 0;
+	bool undistort_first = true;
+	bool do_lookup_depth = false;
 	mat23 iMV, MV;
+	unsigned int depth_scale = 0;
 
 	float step_size = 0.1;
 	int step = 0;
 
 	enum ColorMode {
-		COLOR_TEX_SM, NORMAL, RAYTRACE
+		COLOR_TEX_SM, NORMAL, RAYTRACE, MIRROR, EXPERIMENT
 	};
-	ColorMode coloring = RAYTRACE;
+	ColorMode coloring = EXPERIMENT;
 
 	// dispatch each time the button state is toggled
 	bool one_tap_press = false;
@@ -289,6 +292,9 @@ public:
 			case 'C': 
 				coloring = (int) coloring < 4 ? (ColorMode)(((int) coloring)+1) : COLOR_TEX_SM;
 				return true;
+			case 'X':
+				coloring = (int) coloring > 0 ? (ColorMode)(((int)coloring) - 1) : EXPERIMENT;
+				return true;
 			case cgv::gui::KEY_Left: if (ka != cgv::gui::KeyAction::KA_RELEASE) {
 				shader_calib.eye_separation_factor -= 0.0625f;
 				std::cout << "eye_separation_factor: " << shader_calib.eye_separation_factor << std::endl;
@@ -321,11 +327,14 @@ public:
 		add_member_control(this, "render quads", render_quads, "check");
 		add_member_control(this, "show camera position", show_camera, "check");
 		add_member_control(this, "show calculated frustum size", show_calculated_frustum_size, "check");
-		add_member_control(this, "cull mode", coloring, "dropdown", "enums='color,normal,raytrace,ro'");
+		add_member_control(this, "cull mode", coloring, "dropdown", "enums='color,normal,raytrace,mirror, experiment'");
+		add_member_control(this, "undistort_first", undistort_first, "check");
+		add_member_control(this, "do lookup depth", do_lookup_depth, "check");
 		add_member_control(this, "Eye Separation Factor", shader_calib.eye_separation_factor, "value_slider", "min=0;max=20;ticks=true");
 		add_member_control(this, "Debug Matrices", debug_matrices, "check");
 		add_member_control(this, "Interpolate View Matrix", shader_calib.interpolate_view_matrix, "check");
 		add_member_control(this, "View Eye Positions", visualize_eye_positions, "check");
+		add_member_control(this, "depth scale", depth_scale, "value_slider", "min=0;max=65.536;step=1");
 		add_member_control(this, "rc step size", step_size, "value_slider", "min=0;max=2;step=0.01");
 		add_member_control(this, "rc iterations", step, "value_slider", "min=0;max=20;step=1");
 		add_member_control(this, "current_view", view, "value_slider", "min=-1;max=1;step=.01");
@@ -506,6 +515,12 @@ public:
 		return false;
 	}
 
+	 // since pose - external calibration is identity matrix the projection matrix which is EM * IM is equivalent to IM
+	 mat4 projection_matrix_kinect_depth() {
+		 mat4 IM = calib.depth.get_homogeneous_camera_matrix();
+		 return IM;
+	 }
+
 	void init_frame(cgv::render::context& ctx)
 	{
 			if (!view_ptr)
@@ -584,12 +599,14 @@ public:
 			pr.ref_prog().set_uniform(ctx, "construct_quads", construct_quads);
 			pr.ref_prog().set_uniform(ctx, "render_quads", render_quads);
 			pr.ref_prog().set_uniform(ctx, "coloring", (int)coloring);
+			pr.ref_prog().set_uniform(ctx, "depth_in_which_to_lookup", fdepth);
+			pr.ref_prog().set_uniform(ctx, "do_lookup_depth", do_lookup_depth);
+			pr.ref_prog().set_uniform(ctx, "undistort_first", undistort_first);
 			shader_calib.set_uniforms(ctx, pr.ref_prog(), *stereo_view_ptr);
 			calculate_inverse_modelview_matrix_rgbd_depth();
-			pr.ref_prog().set_uniform(ctx, "iMV_kinect", iMV);
-			pr.ref_prog().set_uniform(ctx, "MV_kinect", calib.depth.get_camera_matrix());
+			pr.ref_prog().set_uniform(ctx, "P_kinect", projection_matrix_kinect_depth());
 			pr.ref_prog().set_uniform(ctx, "eye_separation", shader_calib.eye_separation_factor);
-			
+			pr.ref_prog().set_uniform(ctx, "scale", depth_scale);
 			pr.draw(ctx, 0, sP.size()); // only using sP size with geometryless rendering
 			pr.disable(ctx);
 			if (pr.do_lookup_color())
@@ -654,6 +671,7 @@ public:
 				sr4.set_position(ctx, vec3(mapped_sample, step*step_size));
 				sr4.set_radius(ctx, .05f);
 				sr4.render(ctx, 0, 1);
+				projection_matrix_kinect_depth();
 			}
 		}
 			glEnable(GL_CULL_FACE);
