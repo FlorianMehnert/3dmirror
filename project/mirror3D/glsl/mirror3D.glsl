@@ -319,7 +319,7 @@ bool triangle_intersection(Ray ray, vec3 p0, vec3 p1, vec3 p2){
 }
 
 bool intersect_quad(Ray ray, vec3 p0, vec3 p1, vec3 p2, vec3 p3){
-	return triangle_intersection(ray, p0, p2, p1) || triangle_intersection(ray, p0, p3, p2);;
+	return triangle_intersection(ray, p0, p2, p1) || triangle_intersection(ray, p0, p3, p2);
 }
 
 float get_depth(ivec2 xp){
@@ -343,8 +343,8 @@ bool intersect_pixel(Ray ray, ivec2 xp){
 vec4 intersect_depth_image_bf(){
 	vec3 ro[3], rd[3];
 	vec4 final_color = vec4(1,0,1,1);
+	compute_sub_pixel_rays(ro, rd);
 	for (int c = 0; c < 3; c++){
-		compute_sub_pixel_rays(ro, rd);
 		for (int i = 512/2 - bf_size; i<512/2 + bf_size; i++){
 			for (int j = 512/2 - bf_size; j<512/2 + bf_size; j++){
 				if (intersect_pixel(Ray(ro[c],rd[c]), ivec2(j,i))){
