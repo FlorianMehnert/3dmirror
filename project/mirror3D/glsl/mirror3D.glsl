@@ -70,6 +70,7 @@ uniform vec2 viewport_dims;
 uniform mat3 color_rotation;
 uniform vec3 color_translation;
 uniform float depth_scale;
+uniform int bf_size;
 
 vec3 ray_trace_pixel(vec3 ro, vec3 rd, out float depth) {
 	vec3 pos, nor; // hit position and normal
@@ -290,14 +291,66 @@ mat4 get_modelview_matrix_view(int color_channel){
 		return MV;
 }
 
-bool my_lookup_color(vec3 p, out vec4 c){
-	p = ((p + depth_scale*color_translation)*color_rotation);
-		vec2 xu;
-		vec2 xd = vec2(p[0] / p[2], p[1] / p[2]);
-		vec2 xp = image_to_pixel_coordinates(xd, color_calib);
-		if (xp[0] < 0.0 || xp[1] < 0.0 || xp[0] >= float(color_calib.w) || xp[1] >= float(color_calib.h))
-			return false;
-		c = texture(color_image, pixel_to_texture_coordinates(xp, color_calib));
-		return true;
+float point_in_or_on(vec3 p1, vec3 p2, vec3 a, vec3 b){
+	vec3 cp1 = cross(b-a, p1 - a);
+	vec3 cp2 = cross(b-a, p2 - a);
+	return step(0.0, dot(cp1, cp2));
+}
+bool point_in_triangle(vec3 px, vec3 p0, vec3 p1, vec3 p2){
+	return bool(point_in_or_on(px, p0, p1, p2) * point_in_or_on(px, p1, p2, p0) * point_in_or_on(px, p2, p0, p1));
 }
 
+struct Ray{
+	vec3 origin;
+	vec3 direction;
+};
+
+vec3 intersect_plane(Ray ray, vec3 p0, vec3 p1, vec3 p2){
+	vec3 d = ray.direction;
+	vec3 n = cross(p1-p0,p2-p0);
+	vec3 x = ray.origin + d*dot(p0-ray.origin, n)/dot(d,n);
+	return x;
+}
+
+bool triangle_intersection(Ray ray, vec3 p0, vec3 p1, vec3 p2){
+	vec3 x = intersect_plane(ray, p0, p1, p2);
+	return point_in_triangle(x, p0, p1,p2);
+}
+
+bool intersect_quad(Ray ray, vec3 p0, vec3 p1, vec3 p2, vec3 p3){
+	return triangle_intersection(ray, p0, p2, p1) || triangle_intersection(ray, p0, p3, p2);;
+}
+
+float get_depth(ivec2 xp){
+	return 65535.0 * texture(depth_image, pixel_to_texture_coordinates(xp, depth_calib)).r;
+}
+
+// costruct pixel point
+vec3 cpp(ivec2 xp){
+	float depth = get_depth(xp);
+	vec3 p;
+	construct_point(xp, depth, p);
+	return p;
+}
+
+bool intersect_pixel(Ray ray, ivec2 xp){
+	return intersect_quad(ray, cpp(xp), cpp(xp+ivec2(0,1)), cpp(xp+ivec2(1,1)), cpp(xp+ivec2(1,0)));;
+}
+
+// brute force approach - no raymarching pure iterating over depth image
+vec4 intersect_depth_image_bf(){
+	vec3 ro[3], rd[3];
+	vec4 final_color = vec4(1,0,1,1);
+	for (int c = 0; c < 3; c++){
+		compute_sub_pixel_rays(ro, rd);
+		for (int i = 512/2 - bf_size; i<512/2 + bf_size; i++){
+			for (int j = 512/2-bf_size; j<512/2+bf_size; j++){
+				if (intersect_pixel(Ray(ro[c],rd[c]), ivec2(j,i))){
+					lookup_color(cpp(ivec2(j,i)), final_color);
+					final_color[c] = final_color[c];
+				}
+			}
+		}
+	}
+	return final_color;
+}

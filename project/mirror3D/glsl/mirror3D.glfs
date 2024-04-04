@@ -17,7 +17,6 @@ uniform bool undistort_first;
 uniform bool do_lookup_depth;
 uniform float depth_in_which_to_lookup;
 uniform float depth_scale = 0.001;
-uniform uint scale;
 
 // this is adapted point.glfs
 
@@ -95,75 +94,15 @@ vec4 kinect_to_world_space(vec2 uv);
 vec2 world_to_kinect_space(vec3 world_pos);
 bool map_sample_to_uv(in vec3 ro, out vec2 xd);
 mat4 get_modelview_matrix_view(int color_channel);
-bool my_lookup_color(vec3 p, out vec4 c);
-// ***** end interface of mirror3D.glsl *****************************
-
-uniform calibration color_calib;
-uniform calibration depth_calib;
-
-float point_in_or_on(vec3 p1, vec3 p2, vec3 a, vec3 b){
-	vec3 cp1 = cross(b-a, p1 - a);
-	vec3 cp2 = cross(b-a, p2 - a);
-	return step(0.0, dot(cp1, cp2));
-}
-bool point_in_triangle(vec3 px, vec3 p0, vec3 p1, vec3 p2){
-	return bool(point_in_or_on(px, p0, p1, p2) * point_in_or_on(px, p1, p2, p0) * point_in_or_on(px, p2, p0, p1));
-}
-
+vec4 intersect_depth_image_bf();
 struct Ray{
 	vec3 origin;
 	vec3 direction;
 };
+// ***** end interface of mirror3D.glsl *****************************
 
-vec3 intersect_plane(Ray ray, vec3 p0, vec3 p1, vec3 p2){
-	vec3 d = ray.direction;
-	vec3 n = cross(p1-p0,p2-p0);
-	vec3 x = ray.origin + d*dot(p0-ray.origin, n)/dot(d,n);
-	return x;
-}
-
-bool triangle_intersection(Ray ray, vec3 p0, vec3 p1, vec3 p2){
-	vec3 x = intersect_plane(ray, p0, p1, p2);
-	return point_in_triangle(x, p0, p1,p2);
-}
-
-bool intersect_quad(Ray ray, vec3 p0, vec3 p1, vec3 p2, vec3 p3){
-	return triangle_intersection(ray, p0, p2, p1) || triangle_intersection(ray, p0, p3, p2);;
-}
-
-float get_depth(ivec2 xp){
-	return 65535.0 * texture(depth_image, pixel_to_texture_coordinates(xp, depth_calib)).r;
-}
-
-// costruct pixel point
-vec3 cpp(ivec2 xp){
-	float depth = get_depth(xp);
-	vec3 p;
-	construct_point(xp, depth, p);
-	return p;
-}
-
-bool intersect_pixel(Ray ray, ivec2 xp){
-	return intersect_quad(ray, cpp(xp), cpp(xp+ivec2(0,1)), cpp(xp+ivec2(1,1)), cpp(xp+ivec2(1,0)));;
-}
-
-// brute force approach - no raymarching pure iterating over depth image
-vec4 intersect_depth_image_bf(){
-	vec3 ro[3], rd[3];
-	vec4 final_color = vec4(1,0,1,1);
-	for (int c = 0; c < 3; c++){
-		compute_sub_pixel_rays(ro, rd);
-		for (int i = 240; i < 274; i++){
-			for (int j = 250; j < 264; j++){
-				if (intersect_pixel(Ray(ro[c],rd[c]), ivec2(j,i))){
-					lookup_color(cpp(ivec2(j,i)), final_color);
-					final_color[c] = final_color[c];
-				}
-			}
-		}
-	}
-	return final_color;
-}
+uniform calibration color_calib;
+uniform calibration depth_calib;
 
 void main()
 {
@@ -176,7 +115,7 @@ void main()
 
 		finish_fragment(vec4(fi.normal.xyz * 10000, 1.0), gl_FragCoord.z + fi.depth_offset);
 	
-	// iterating over pixels in depth texture
+	// bullying the GPU
 	} else if (coloring == 2) {
 		finish_fragment(intersect_depth_image_bf(), gl_FragCoord.z + fi.depth_offset);
 	
