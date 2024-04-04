@@ -346,7 +346,7 @@ vec4 intersect_depth_image_bf(){
 	for (int c = 0; c < 3; c++){
 		compute_sub_pixel_rays(ro, rd);
 		for (int i = 512/2 - bf_size; i<512/2 + bf_size; i++){
-			for (int j = 512/2-bf_size; j<512/2+bf_size; j++){
+			for (int j = 512/2 - bf_size; j<512/2 + bf_size; j++){
 				if (intersect_pixel(Ray(ro[c],rd[c]), ivec2(j,i))){
 					lookup_color(cpp(ivec2(j,i)), final_color);
 					final_color[c] = final_color[c];

@@ -171,7 +171,7 @@ protected:
 	bool undistort_first = true;
 	bool do_lookup_depth = false;
 	mat23 iMV, MV;
-	unsigned int bf_size = 10;
+	int bf_size = 10;
 
 	float step_size = 0.1;
 	int step = 0;
