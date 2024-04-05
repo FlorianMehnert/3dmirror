@@ -1,18 +1,2 @@
 	
 // ********** view configuration ************
-type(holo_view_interactor):focus_x=0.16
-type(holo_view_interactor):focus_y=-0.47
-type(holo_view_interactor):focus_z=0.87
-type(holo_view_interactor):view_dir_x=-0.06
-type(holo_view_interactor):view_dir_y=0.87
-type(holo_view_interactor):view_dir_z=0
-type(holo_view_interactor):up_dir_x=-0.06
-type(holo_view_interactor):up_dir_y=0.87
-type(holo_view_interactor):up_dir_z=0.48
-// field of view angle in y direction in degrees
-type(holo_view_interactor):y_view_angle=45
-// y extent in world space at focus point (changes to this will move eye point correspondingly)
-type(holo_view_interactor):extent=3.4522
-type(holo_view_interactor):z_near=0.0001
-type(holo_view_interactor):z_far=100
-type(fltk_viewer_window):theme=dark

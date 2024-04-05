@@ -17,6 +17,8 @@ uniform bool undistort_first;
 uniform bool do_lookup_depth;
 uniform float depth_in_which_to_lookup;
 uniform float depth_scale = 0.001;
+uniform int raymarch_limit;
+uniform float ray_length;
 
 // this is adapted point.glfs
 
@@ -95,10 +97,13 @@ vec2 world_to_kinect_space(vec3 world_pos);
 bool map_sample_to_uv(in vec3 ro, out vec2 xd);
 mat4 get_modelview_matrix_view(int color_channel);
 vec4 intersect_depth_image_bf();
+float get_depth(ivec2 xp);
 struct Ray{
 	vec3 origin;
 	vec3 direction;
 };
+vec3 vec3_ray(Ray ray);
+void set_raylength(Ray inray, out Ray outray, int s, float step_width);
 // ***** end interface of mirror3D.glsl *****************************
 
 uniform calibration color_calib;
@@ -133,22 +138,63 @@ void main()
 	
 	// experimenting
 	} else if (coloring == 4) {
-		vec3 ro[3], rd[3], eye_sample, eye_sample_clip_space;
+		vec3 ro[3], rd[3], eye_sample_clip_space;
+		vec2 texture_eye_sample;
+		bool hit_something[3] = bool[](false, false, false);
+		bool exceeded_clip[3] = bool[](false, false, false);
+		bool hit_a_color[3] = bool[](false, false, false);
+		float final_depth;
+
+		Ray start_ray, current_ray;
 		vec4 final_color, hit_color = vec4(1,0,0,1);
 		compute_sub_pixel_rays(ro, rd);
-		for (int i=0; i < 3; i++){
+		for (int i = 0; i < 3; i++){
 			vec2 mapped_sample;
-			eye_sample = vec3(ro[i] + rd[i]);
-			eye_sample_clip_space = (P_kinect * vec4(eye_sample, 1.0)).xyz;
-			
-			vec3 p;
-			if (construct_point((eye_sample_clip_space*depth_scale).xy, depth_in_which_to_lookup, p)){
-				if (lookup_color(p, hit_color)){
-					final_color[i] = hit_color[i];
+			vec3 current_ro = ro[i];
+			vec3 ro_kinect_space;
+
+			for (int m = 0; m < raymarch_limit; m++){
+				vec4 adjusted_ray = vec4(ro[i] + rd[i] * m * ray_length,1.0);
+				//vec3 ro_kinect_space = vec3(.5, .5, .5) * vec3(P_kinect * get_projection_matrix() * adjusted_ray) + vec3(.5, .5, .5);
+				vec3 ro_kinect_space = vec3(P_kinect*get_projection_matrix() * adjusted_ray);
+				texture_eye_sample = ro_kinect_space.xy; // scale 0-1 up to 0-512
+				vec2 pixel_coordinates = texture_eye_sample.xy;
+
+				vec3 p;
+				if (construct_point(pixel_coordinates, lookup_depth(ivec2(pixel_coordinates)), p)){//get_depth(ivec2(texture_eye_sample)), p)){
+					hit_something[i] = true;
+					if (lookup_color(p, hit_color)){
+						final_color = hit_color;
+						final_depth = p.z;
+						hit_a_color[i] = true;
+						break;
+					}
 				}
 			}
 		}
+		// *** start debug ***
+		float all_3_missed = 1;
+		float all_exceeded_clip = 1;
+		float all_3_missed_color = 1;
+		for (int i = 0; i < 3; i++){
+			if (hit_something[i]){
+				all_3_missed = 0;
+			}
+			if (exceeded_clip[i]){
+				all_exceeded_clip = 0;
+			}
+			if (hit_a_color[i]){
+				all_3_missed_color = 0;
+			}
+		}
+		float error = all_3_missed * all_3_missed_color;
+		if (error == 1){
+			final_color = vec4(0, all_3_missed, all_3_missed_color, 1.0);
+		}
+
+		// *** end debug ***
+		
 		// remember different modelview matricies for each view inbetween the eyes
-		finish_fragment(fi.color + final_color, gl_FragCoord.z + fi.depth_offset);
+		finish_fragment(final_color, final_depth);
 	}
 }

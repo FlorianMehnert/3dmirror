@@ -356,3 +356,12 @@ vec4 intersect_depth_image_bf(){
 	}
 	return final_color;
 }
+
+vec3 vec3_ray(Ray ray) {
+	return ray.origin + ray.direction;
+}
+
+void set_raylength(Ray inray, out Ray outray, int s, float step_width) {
+	outray.origin = inray.origin;
+	outray.direction = inray.direction * s * step_width;
+}

@@ -174,7 +174,7 @@ protected:
 	int bf_size = 10;
 
 	float step_size = 0.1;
-	int step = 0;
+	int step = 1000;
 
 	enum ColorMode {
 		COLOR_TEX_SM, NORMAL, BRUTE_FORCE, MIRROR, EXPERIMENT
@@ -607,6 +607,8 @@ public:
 			pr.ref_prog().set_uniform(ctx, "P_kinect", projection_matrix_kinect_depth());
 			pr.ref_prog().set_uniform(ctx, "eye_separation", shader_calib.eye_separation_factor);
 			pr.ref_prog().set_uniform(ctx, "bf_size", bf_size);
+			pr.ref_prog().set_uniform(ctx, "raymarch_limit", step);
+			pr.ref_prog().set_uniform(ctx, "ray_length", step_size);
 			pr.draw(ctx, 0, sP.size()); // only using sP size with geometryless rendering
 			pr.disable(ctx);
 			if (pr.do_lookup_color())
