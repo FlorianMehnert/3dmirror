@@ -146,7 +146,7 @@ void main()
 		float final_depth;
 
 		Ray start_ray, current_ray;
-		vec4 final_color, hit_color = vec4(1,0,0,1);
+		vec4 final_color, hit_color;
 		compute_sub_pixel_rays(ro, rd);
 		for (int i = 0; i < 3; i++){
 			vec2 mapped_sample;
@@ -156,12 +156,11 @@ void main()
 			for (int m = 0; m < raymarch_limit; m++){
 				vec4 adjusted_ray = vec4(ro[i] + rd[i] * m * ray_length,1.0);
 				//vec3 ro_kinect_space = vec3(.5, .5, .5) * vec3(P_kinect * get_projection_matrix() * adjusted_ray) + vec3(.5, .5, .5);
-				vec3 ro_kinect_space = vec3(P_kinect*get_projection_matrix() * adjusted_ray);
-				texture_eye_sample = ro_kinect_space.xy; // scale 0-1 up to 0-512
-				vec2 pixel_coordinates = texture_eye_sample.xy;
+				
+				vec2 pixel_coordinates = ro_kinect_space.xy;
 
 				vec3 p;
-				if (construct_point(pixel_coordinates, lookup_depth(ivec2(pixel_coordinates)), p)){//get_depth(ivec2(texture_eye_sample)), p)){
+				if (construct_point(pixel_coordinates, lookup_depth(ivec2(pixel_coordinates)), p)){
 					hit_something[i] = true;
 					if (lookup_color(p, hit_color)){
 						final_color = hit_color;
@@ -194,6 +193,18 @@ void main()
 
 		// *** end debug ***
 		
+		// *** by hand reconstructing texture pixel space of kinect from ray-origin ***
+		for (int c = 0;  c < 3; c++){
+		
+			vec2 uv = gl_FragCoord.xy / viewport_dims;
+			float view = view_from_fragment_component(uv, c);
+			mat4 MV = get_modelview_matrix();
+			stereo_translate_modelview_matrix(view, MV);
+			vec4 eye_pos_clip_space = (P_kinect * MV * vec4(ro[c], 1.0));
+			final_color[c] = vec4((P_kinect * MV * vec4(ro[c] + rd[c], 1.0)).xyz/512, 1.0)[c];
+		}
+		// *** end hand reconstruction ***
+
 		// remember different modelview matricies for each view inbetween the eyes
 		finish_fragment(final_color, final_depth);
 	}

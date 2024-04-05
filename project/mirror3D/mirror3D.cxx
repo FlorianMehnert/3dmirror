@@ -20,6 +20,8 @@
 #include <algorithm>
 #include <holo_disp/shader_display_calibration.h>
 #include <cgv/defines/quote.h>
+#include <cgv/render/shader_library.h>
+
 
 // only temporary for variance of depth frame
 #include <iostream>
@@ -373,7 +375,7 @@ public:
 		cgv::render::ref_box_wire_renderer(ctx, 1);
 		cgv::render::ref_rectangle_renderer(ctx, 1);
 		cgv::render::ref_sphere_renderer(ctx, 1);
-		
+
 		init_dummy_compute_shader(ctx);
 		//init_raycast_compute_shader(ctx);
 

@@ -3,6 +3,7 @@ vertex_file:camera.glsl
 vertex_file:rgbd.glsl
 geometry_file:mirror3D.glgs
 geometry_file:view.glsl
+//vertex_file:screen_quad.glvs
 fragment_file:camera.glsl
 fragment_file:rgbd.glsl
 fragment_file:mirror3D.glsl
