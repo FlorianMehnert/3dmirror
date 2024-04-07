@@ -365,3 +365,16 @@ void set_raylength(Ray inray, out Ray outray, int s, float step_width) {
 	outray.origin = inray.origin;
 	outray.direction = inray.direction * s * step_width;
 }
+
+vec4 pixel_coordinates_to_color(vec2 xp) {
+	vec3 p;
+	vec4 color;
+	construct_point(ivec2(xp), lookup_depth(ivec2(xp)), p);
+	lookup_color(p, color);
+	return color;
+}
+
+mat2 rotate_2d(float rotation) {
+	return mat2(cos(rotation), -sin(rotation),
+		sin(rotation), cos(rotation));
+}
