@@ -221,10 +221,10 @@ void main()
 			}
 		}
 		if (!hit_any_color){
-		final_color = vec4(0,0,1,1);
+			final_color = vec4(0,0,1,1);
 		}
 		max_sample_depth = lookup_depth(ivec2(xp));
-		final_color = vec4(0,0, max_sample_depth, 1);
+		final_color = max_sample_depth > max_ray_depth ? vec4(1,0, 0, 1) : vec4(0,1, 0, 1) ;
 		// remember different modelview matricies for each view inbetween the eyes
 		finish_fragment(final_color, gl_FragCoord.z - depth + fi.depth_offset);
 	}
