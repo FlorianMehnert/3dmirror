@@ -161,36 +161,44 @@ void main()
 		
 		// *** by hand reconstructing texture pixel space of kinect from ray-origin ***
 		for (int c = 0;  c < 3; c++){
-			vec2 uv = gl_FragCoord.xy / viewport_dims;
-			float view = view_from_fragment_component(uv, c);
-			mat4 MV = get_modelview_matrix();
 			int type;
 			int prev_type = NO_SURFACE;
 			int classify = IN_FRONT;
-			stereo_translate_modelview_matrix(view, MV);
+			vec3 sample_point, kinect_point;
 
 			for (int s = 1; s < raymarch_limit; s++){
-				vec2 kinect_uv = vec4((P_kinect * MV * vec4(ro[c], 1.0)).xy/512 + (rd[c] * ray_length * s).xy, 1.0, 1.0).xy;
-				float ray_depth_in_kinect_coords = ((P_kinect * MV * vec4(ro[c] + rd[c] * ray_length * s, 1.0)).xyz/512).z;
+				// careful with this approach since P_kinect is not calculated correctly - even if parameters are correct this is just an approximation
+				//vec2 kinect_uv = vec4((inverse(P_kinect) * MV * vec4(ro[c], 1.0)).xy/512 + (rd[c] * ray_length * s).xy, 1.0, 1.0).xy;
+				sample_point = ro[c] + rd[c];
+				float ray_depth = sample_point.z;
+
+				// mapping from world to pixel space of kinect - inverted construct point
 				mat2 J;
-				apply_distortion_model(kinect_uv, xu, J,color_calib);
-			
-				if (xu.x < -1 ||xu.x > 1||xu.y < -1||xu.y > 1){
+				vec2 xu, xd, xp;
+				xp = sample_point.xy;
+				xu = xp;
+				int dir = apply_distortion_model(xp, xu, J, depth_calib);
+				xd = image_to_pixel_coordinates(xp, depth_calib);
+				
+				if (dir != CONVERGENCE){// something went wrong ¯\_(:))_/¯
+				}
+				float depth_m = sample_point.z;
+				kinect_point = vec3(xu/depth_m,depth_m);
+
+				/*
+				if (kinect_point.x < -1 ||kinect_point.x > 1||kinect_point.y < -1||kinect_point.y > 1){
 					type = NO_SURFACE;
 					continue;
 				}
+				*/
 
-				vec2 kinect_px = texture_to_pixel_coordinates(xu, depth_calib);
-				//float depth = 65535.0 * texture(depth_image, pixel_to_texture_coordinates(kinect_px, depth_calib)).r;
-				float depth = lookup_depth(ivec2(kinect_px));
-
-				if (depth > ray_depth_in_kinect_coords){
+				if (kinect_point.z > ray_depth){
 					classify = IN_FRONT;
 				}else{
 					classify = BEHIND;
 				}
 				
-				if (!construct_point(kinect_px, depth, p)){
+				if (!construct_point(kinect_point.xy, kinect_point.z, p)){
 					type = NO_SURFACE;
 				}else{
 					type = SURFACE;
@@ -202,7 +210,7 @@ void main()
 					prev_type = type;
 				}
 			}
-			lookup_color(p, color);
+			lookup_color(kinect_point, color);
 			final_color[c] = color[c];
 		}
 
