@@ -15,15 +15,13 @@ uniform int coloring;
 uniform sampler2D depth_image;
 uniform sampler2D distortion_map;
 uniform sampler2D color_image;
-uniform mat4 P_kinect;
 uniform vec2 viewport_dims;
 uniform bool interpolate_view_matrix;
-uniform bool undistort_first;
-uniform bool do_lookup_depth;
 uniform float depth_in_which_to_lookup;
 uniform float depth_scale = 0.001;
 uniform int raymarch_limit;
 uniform float ray_length;
+uniform float view;
 
 
 // this is adapted point.glfs
@@ -93,14 +91,7 @@ bool lookup_color(vec3 p, float eps, out vec4 c);
 // ***** end interface of rgbd.glsl ***********************************
 
 // ***** begin interface of mirror3D.glsl *****************************
-vec3 ray_trace_pixel(vec3 ro, vec3 rd, out float depth);
-mat4 kinect_projection_matrix(float fx, float fy, float cx, float cy, int image_height, float near_clip, float far_clip);
-mat4 get_model_view_matrix_translation(vec3 ro);
-void march_along(vec3 ro, vec3 rd, int color_channel, out vec4 color, out float depth);
-void part_of_march_along(vec3 ro, vec3 rd, int color_channel, out vec4 color, out float depth);
 vec4 kinect_to_world_space(vec2 uv);
-vec2 world_to_kinect_space(vec3 world_pos);
-bool map_sample_to_uv(in vec3 ro, out vec2 xd);
 mat4 get_modelview_matrix_view(int color_channel);
 vec4 intersect_depth_image_bf();
 float get_depth(ivec2 xp);
@@ -112,6 +103,8 @@ vec3 vec3_ray(Ray ray);
 void set_raylength(Ray inray, out Ray outray, int s, float step_width);
 vec4 pixel_coordinates_to_color(vec2 xp);
 mat2 rotate_2d(float rotation);
+bool inverse_construct_point(in vec3 p, out vec2 xp, out float depth);
+bool inverse_construct_point_v2(in vec3 p, out vec2 xp);
 // ***** end interface of mirror3D.glsl *****************************
 
 uniform calibration color_calib;
@@ -148,9 +141,6 @@ void main()
 	} else if (coloring == 4) {
 		vec3 ro[3], rd[3], eye_sample_clip_space;
 		vec2 texture_eye_sample, xu;
-		bool hit_something[3] = bool[](false, false, false);
-		bool exceeded_clip[3] = bool[](false, false, false);
-		bool hit_a_color[3] = bool[](false, false, false);
 
 		Ray start_ray, current_ray;
 		vec4 final_color = vec4(1,0,0,1);
@@ -160,61 +150,82 @@ void main()
 		compute_sub_pixel_rays(ro, rd);
 		
 		// *** by hand reconstructing texture pixel space of kinect from ray-origin ***
+		float depth;
+		bool hit_color[3];
+		float max_ray_depth;
+		float max_sample_depth;
+		vec2 xp;
 		for (int c = 0;  c < 3; c++){
-			int type;
-			int prev_type = NO_SURFACE;
-			int classify = IN_FRONT;
-			vec3 sample_point, kinect_point;
-
+			max_ray_depth = 0;
+			max_sample_depth = 0;
+			hit_color[c] = false;
+			int type, prev_type, classify;
+			prev_type = NO_SURFACE;
+			classify = IN_FRONT;
+			vec3 sample_point;
 			for (int s = 1; s < raymarch_limit; s++){
-				// careful with this approach since P_kinect is not calculated correctly - even if parameters are correct this is just an approximation
-				//vec2 kinect_uv = vec4((inverse(P_kinect) * MV * vec4(ro[c], 1.0)).xy/512 + (rd[c] * ray_length * s).xy, 1.0, 1.0).xy;
-				sample_point = ro[c] + rd[c];
+				
+				ro[c].x = ro[c].x + view*0.0001;
+				
+				sample_point = ro[c] + rd[c] * s * ray_length;
+				
 				float ray_depth = sample_point.z;
 
 				// mapping from world to pixel space of kinect - inverted construct point
-				mat2 J;
-				vec2 xu, xd, xp;
-				xp = sample_point.xy;
-				xu = xp;
-				int dir = apply_distortion_model(xp, xu, J, depth_calib);
-				xd = image_to_pixel_coordinates(xp, depth_calib);
 				
-				if (dir != CONVERGENCE){// something went wrong ¯\_(:))_/¯
+				if (inverse_construct_point_v2(sample_point, xp)){
+					depth = lookup_depth(ivec2(xp));
+					/*
+					if (xp.x < -512 ||xp.x > 512||xp.y < -512||xp.y > 512){
+						type = NO_SURFACE;
+						continue;
+					}
+					*/
+					max_ray_depth = ray_depth;
+					max_sample_depth = depth;
+					if (depth > ray_depth){
+						classify = IN_FRONT;
+					}else{
+						classify = BEHIND;
+					}
 				}
-				float depth_m = sample_point.z;
-				kinect_point = vec3(xu/depth_m,depth_m);
 
-				/*
-				if (kinect_point.x < -1 ||kinect_point.x > 1||kinect_point.y < -1||kinect_point.y > 1){
-					type = NO_SURFACE;
-					continue;
-				}
-				*/
-
-				if (kinect_point.z > ray_depth){
-					classify = IN_FRONT;
-				}else{
-					classify = BEHIND;
-				}
-				
-				if (!construct_point(kinect_point.xy, kinect_point.z, p)){
+				if (!construct_point(xp, depth, p)){
 					type = NO_SURFACE;
 				}else{
 					type = SURFACE;
 				}
 
 				if (prev_type != type && prev_type != NO_SURFACE && type != NO_SURFACE){
+					hit_color[c] = true;
 					break;
 				}else{
 					prev_type = type;
 				}
 			}
-			lookup_color(kinect_point, color);
+			lookup_color(vec3(xp,depth), color);
 			final_color[c] = color[c];
 		}
+		
+		// debugging: make black transparent
+		if (final_color.xyz == vec3(0,0,0)){
+			final_color.w = .1;
+		}
 
+		// debug: check if ever hit
+		bool hit_any_color;
+		hit_any_color = false;
+		for (int i = 0;  i < 3; i++){
+			if (hit_color[i]){
+				hit_any_color = true;
+			}
+		}
+		if (!hit_any_color){
+		final_color = vec4(0,0,1,1);
+		}
+		max_sample_depth = lookup_depth(ivec2(xp));
+		final_color = vec4(0,0, max_sample_depth, 1);
 		// remember different modelview matricies for each view inbetween the eyes
-		finish_fragment(final_color, gl_FragCoord.z + fi.depth_offset);
+		finish_fragment(final_color, gl_FragCoord.z - depth + fi.depth_offset);
 	}
 }

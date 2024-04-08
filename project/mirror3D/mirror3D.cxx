@@ -88,7 +88,7 @@ protected:
 	float cam_color_offset = 0.0f;
 
 	// show spheres that represent the left and right most
-	bool visualize_eye_positions = true;
+	bool visualize_eye_positions = false;
 
 	// color warped to depth image is only needed in case CPU is used to lookup colors
 	rgbd::frame_type warped_color_frame;
@@ -175,8 +175,8 @@ protected:
 	mat23 iMV, MV;
 	int bf_size = 10;
 
-	float step_size = 0.1;
-	int step = 1000;
+	float step_size = 0.01;
+	int step = 100;
 
 	enum ColorMode {
 		COLOR_TEX_SM, NORMAL, BRUTE_FORCE, MIRROR, EXPERIMENT
@@ -330,15 +330,13 @@ public:
 		add_member_control(this, "show camera position", show_camera, "check");
 		add_member_control(this, "show calculated frustum size", show_calculated_frustum_size, "check");
 		add_member_control(this, "cull mode", coloring, "dropdown", "enums='color,normals,brute-force,mirror, experiment'");
-		add_member_control(this, "undistort_first", undistort_first, "check");
-		add_member_control(this, "do lookup depth", do_lookup_depth, "check");
 		add_member_control(this, "Eye Separation Factor", shader_calib.eye_separation_factor, "value_slider", "min=0;max=20;ticks=true");
 		add_member_control(this, "Debug Matrices", debug_matrices, "check");
 		add_member_control(this, "Interpolate View Matrix", shader_calib.interpolate_view_matrix, "check");
 		add_member_control(this, "View Eye Positions", visualize_eye_positions, "check");
 		add_member_control(this, "bf_size", bf_size, "value_slider", "min=0;max=100;step=1");
-		add_member_control(this, "rc step size", step_size, "value_slider", "min=0;max=2;step=0.01");
-		add_member_control(this, "rc iterations", step, "value_slider", "min=0;max=20;step=1");
+		add_member_control(this, "rc step size", step_size, "value_slider", "min=0;max=0.1;step=0.001");
+		add_member_control(this, "rc iterations", step, "value_slider", "min=0;max=500;step=1");
 		add_member_control(this, "current_view", view, "value_slider", "min=-1;max=1;step=.01");
 
 		if (begin_tree_node("capture", is_running)) {
@@ -602,15 +600,13 @@ public:
 			pr.ref_prog().set_uniform(ctx, "render_quads", render_quads);
 			pr.ref_prog().set_uniform(ctx, "coloring", (int)coloring);
 			pr.ref_prog().set_uniform(ctx, "depth_in_which_to_lookup", fdepth);
-			pr.ref_prog().set_uniform(ctx, "do_lookup_depth", do_lookup_depth);
-			pr.ref_prog().set_uniform(ctx, "undistort_first", undistort_first);
 			shader_calib.set_uniforms(ctx, pr.ref_prog(), *stereo_view_ptr);
 			calculate_inverse_modelview_matrix_rgbd_depth();
-			pr.ref_prog().set_uniform(ctx, "P_kinect", projection_matrix_kinect_depth());
 			pr.ref_prog().set_uniform(ctx, "eye_separation", shader_calib.eye_separation_factor);
 			pr.ref_prog().set_uniform(ctx, "bf_size", bf_size);
 			pr.ref_prog().set_uniform(ctx, "raymarch_limit", step);
 			pr.ref_prog().set_uniform(ctx, "ray_length", step_size);
+			pr.ref_prog().set_uniform(ctx, "view", view);
 			pr.draw(ctx, 0, sP.size()); // only using sP size with geometryless rendering
 			pr.disable(ctx);
 			if (pr.do_lookup_color())
