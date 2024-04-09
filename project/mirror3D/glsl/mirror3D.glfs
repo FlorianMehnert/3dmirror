@@ -20,7 +20,7 @@ uniform bool interpolate_view_matrix;
 uniform float depth_in_which_to_lookup;
 uniform float depth_scale = 0.001;
 uniform int raymarch_limit;
-uniform float ray_length;
+uniform float ray_length_m;
 uniform float view;
 
 
@@ -154,6 +154,7 @@ void main()
 		bool hit_color[3], befront[3];
 		float max_ray_depth, max_sample_depth, ray_depth;
 		vec2 xp;
+		
 		for (int c = 0;  c < 3; c++){
 			max_ray_depth = 0;
 			max_sample_depth = 0;
@@ -163,8 +164,8 @@ void main()
 
 			for (int s = 1; s < raymarch_limit; s++){
 				ro[c].x = ro[c].x + view;
-				sample_point = ro[c] + rd[c] * s * ray_length / depth_scale;
-				float ray_depth = sample_point.z;
+				sample_point = ro[c] + rd[c] * s * ray_length_m;
+				float ray_depth =  sample_point.z;
 				if (inverse_construct_point_v2(sample_point, xp)){
 					depth = lookup_depth(ivec2(xp));
 					if (depth > ray_depth){
@@ -201,6 +202,7 @@ void main()
 		if (!hit_any_color){
 			discard;
 		}
+		//final_color = vec4(0,0,lookup_depth(ivec2(xp),1);
 		finish_fragment(final_color, gl_FragCoord.z + fi.depth_offset);
 	}
 }

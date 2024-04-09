@@ -605,7 +605,7 @@ public:
 			pr.ref_prog().set_uniform(ctx, "eye_separation", shader_calib.eye_separation_factor);
 			pr.ref_prog().set_uniform(ctx, "bf_size", bf_size);
 			pr.ref_prog().set_uniform(ctx, "raymarch_limit", step);
-			pr.ref_prog().set_uniform(ctx, "ray_length", step_size);
+			pr.ref_prog().set_uniform(ctx, "ray_length_m", step_size);
 			pr.ref_prog().set_uniform(ctx, "view", view);
 			pr.draw(ctx, 0, sP.size()); // only using sP size with geometryless rendering
 			pr.disable(ctx);

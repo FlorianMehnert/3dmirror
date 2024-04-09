@@ -192,10 +192,10 @@ bool inverse_construct_point_v2(in vec3 p, out vec2 xp)
 	mat2 J;
 	vec2 xu, xd;
 	int result;
-	float depth;
+	float depth_m;
 	
-	depth = p.z / depth_scale;
-	xd = p.xy / (depth_scale*depth);
+	depth_m = p.z;
+	xd = p.xy / depth_m;
 	result = apply_distortion_model(xd, xu, J, depth_calib);
 	if (result != SUCCESS)
 		return false;
