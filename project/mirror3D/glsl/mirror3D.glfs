@@ -151,59 +151,37 @@ void main()
 		
 		// *** by hand reconstructing texture pixel space of kinect from ray-origin ***
 		float depth;
-		bool hit_color[3];
-		float max_ray_depth;
-		float max_sample_depth;
+		bool hit_color[3], befront[3];
+		float max_ray_depth, max_sample_depth, ray_depth;
 		vec2 xp;
 		for (int c = 0;  c < 3; c++){
 			max_ray_depth = 0;
 			max_sample_depth = 0;
 			hit_color[c] = false;
 			int type, prev_type, classify;
-			prev_type = NO_SURFACE;
-			classify = IN_FRONT;
 			vec3 sample_point;
-			for (int s = 1; s < raymarch_limit; s++){
-				
-				ro[c].x = ro[c].x + view*0.0001;
-				
-				sample_point = ro[c] + rd[c] * s * ray_length;
-				
-				float ray_depth = sample_point.z;
 
-				// mapping from world to pixel space of kinect - inverted construct point
-				
+			for (int s = 1; s < raymarch_limit; s++){
+				ro[c].x = ro[c].x + view;
+				sample_point = ro[c] + rd[c] * s * ray_length / depth_scale;
+				float ray_depth = sample_point.z;
 				if (inverse_construct_point_v2(sample_point, xp)){
 					depth = lookup_depth(ivec2(xp));
-					/*
-					if (xp.x < -512 ||xp.x > 512||xp.y < -512||xp.y > 512){
-						type = NO_SURFACE;
-						continue;
-					}
-					*/
-					max_ray_depth = ray_depth;
-					max_sample_depth = depth;
 					if (depth > ray_depth){
-						classify = IN_FRONT;
+						type = IN_FRONT;
 					}else{
-						classify = BEHIND;
+						type = BEHIND;
 					}
 				}
-
-				if (!construct_point(xp, depth, p)){
-					type = NO_SURFACE;
-				}else{
-					type = SURFACE;
-				}
-
-				if (prev_type != type && prev_type != NO_SURFACE && type != NO_SURFACE){
+				construct_point(xp, depth, p);
+				if (prev_type != type && type != IN_FRONT){
 					hit_color[c] = true;
 					break;
 				}else{
 					prev_type = type;
 				}
 			}
-			lookup_color(vec3(xp,depth), color);
+			lookup_color(p, color);
 			final_color[c] = color[c];
 		}
 		
@@ -221,11 +199,8 @@ void main()
 			}
 		}
 		if (!hit_any_color){
-			final_color = vec4(0,0,1,1);
+			discard;
 		}
-		max_sample_depth = lookup_depth(ivec2(xp));
-		final_color = max_sample_depth > max_ray_depth ? vec4(1,0, 0, 1) : vec4(0,1, 0, 1) ;
-		// remember different modelview matricies for each view inbetween the eyes
-		finish_fragment(final_color, gl_FragCoord.z - depth + fi.depth_offset);
+		finish_fragment(final_color, gl_FragCoord.z + fi.depth_offset);
 	}
 }
