@@ -154,6 +154,7 @@ void main()
 		bool hit_color[3], befront[3];
 		float max_ray_depth, max_sample_depth, ray_depth;
 		vec2 xp;
+		bool is_terrain = true;
 		
 		for (int c = 0;  c < 3; c++){
 			max_ray_depth = 0;
@@ -165,16 +166,20 @@ void main()
 			for (int s = 1; s < raymarch_limit; s++){
 				ro[c].x = ro[c].x + view;
 				sample_point = ro[c] + rd[c] * s * ray_length_m;
-				float ray_depth =  sample_point.z;
+				float ray_depth = sample_point.z;
 				if (inverse_construct_point_v2(sample_point, xp)){
+					xp = vec2(vec4(xp, 0,0));
 					depth = lookup_depth(ivec2(xp));
 					if (depth > ray_depth){
 						type = IN_FRONT;
 					}else{
 						type = BEHIND;
 					}
+				}else{
+					is_terrain = false;
 				}
-				construct_point(xp, depth, p);
+				if (!construct_point(xp, depth, p))
+					final_color[c] = 1;
 				if (prev_type != type && type != IN_FRONT){
 					hit_color[c] = true;
 					break;
@@ -200,7 +205,7 @@ void main()
 			}
 		}
 		if (!hit_any_color){
-			discard;
+			final_color = vec4 (1,0,0,1);
 		}
 		//final_color = vec4(0,0,lookup_depth(ivec2(xp),1);
 		finish_fragment(final_color, gl_FragCoord.z + fi.depth_offset);

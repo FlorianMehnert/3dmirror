@@ -83,8 +83,6 @@ void main()
 				vo.color = invalid_color;
 				if (discard_invalid_color_points)
 					vo.depth_offset = 200000.0;
-			}else{
-				
 			}
 		}
 		else
