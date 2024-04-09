@@ -108,6 +108,7 @@ mat2 rotate_2d(float rotation);
 bool inverse_construct_point(in vec3 p, out vec2 xp, out float depth);
 bool inverse_construct_point_v2(in vec3 p, out vec2 xp);
 mat4 get_modelview_eye(int channel);
+mat4 extractViewMatrix(mat4 MV);
 // ***** end interface of mirror3D.glsl *****************************
 
 uniform calibration color_calib;
@@ -164,63 +165,70 @@ void main()
 			max_sample_depth = 0;
 			hit_color[c] = false;
 			int type, prev_type, classify;
-			vec3 sample_point, p;
+			vec3 ray_world, ray_world_correct_direction, p;
 
-			for (int s = 1; s < raymarch_limit; s++){
-				ro[c].x = ro[c].x + view*1000;
-				sample_point = ro[c] + rd[c] * s * ray_length_m;
-				sample_point = vec3(get_modelview_matrix() * vec4(sample_point, 1.0));
-				float ray_depth = sample_point.z;
-				if (inverse_construct_point_v2(sample_point, xp)){
+			for (int s = 1; s < raymarch_limit; s++) {
+				ro[c].x = ro[c].x + view;
+				ray_world = ro[c] + rd[c] * s * ray_length_m;
+				ray_world_correct_direction = vec3(extractViewMatrix(get_modelview_matrix()) * vec4(ray_world, 1.0));
+				float ray_depth = ray_world.z;
+				
+				if (inverse_construct_point_v2(ray_world_correct_direction, xp)) {
+					if (xp.x > 512 || xp.x < 0 || xp.y > 512 || xp.y < 0 )
+						continue;
+
 					depth = lookup_depth(ivec2(xp));
-					if (depth > ray_depth){
+					if (!bool(depth))
+						continue;
+
+					if (depth > ray_depth)
 						type = IN_FRONT;
-					}else{
+					else
 						type = BEHIND;
-					}
-				}else{
+					
+				} else {
 					is_terrain = false;
 				}
 				if (!construct_point(xp, depth, p))
 					continue;
-				//get_modelview_matrix()*
-				if (prev_type != type && type != IN_FRONT){
+				if (prev_type != type && type != IN_FRONT) {
 					hit_color[c] = true;
-					marched_ray_depth[c] = sample_point.z;
 					break;
-				}else{
+				} else {
 					prev_type = type;
 				}
 			}
+			marched_ray_depth = ray_world_correct_direction;
 
 			// debug colors
-			sampled_depth[c] = sample_point.x;
+			sampled_depth[c] = p.z;
 			lookup_color(p, color);
-			final_color[c] = color[c];
-			
+			final_color[c] = color[c];	
 		}
 		
 		// catching bad lookups: make black transparent
-		if (final_color.xyz == vec3(0,0,0)){
+		if (final_color.xyz == vec3(0,0,0)) {
 			final_color.w = .1;
 		}
 
 		// debug: check if ever hit
 		bool hit_any_color;
 		hit_any_color = false;
-		for (int i = 0;  i < 3; i++){
-			if (hit_color[i]){
+		for (int i = 0;  i < 3; i++) {
+			if (hit_color[i]) {
 				hit_any_color = true;
 			}
 		}
-		if (!hit_any_color){
+		
+		if (!hit_any_color) {
 			final_color = vec4 (1,0,0,1);
+			
 		}
 
-		if (show_marched_depth){
+		if (show_marched_depth) {
 			final_color = vec4(marched_ray_depth, 1.0);
 		}
-		else if (show_sampled_depth){
+		else if (show_sampled_depth) {
 			final_color = vec4(sampled_depth, 1.0);
 		}
 
