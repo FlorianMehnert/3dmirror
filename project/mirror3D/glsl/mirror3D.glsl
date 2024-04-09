@@ -202,3 +202,11 @@ bool inverse_construct_point_v2(in vec3 p, out vec2 xp)
 	xp = image_to_pixel_coordinates(xu, depth_calib);
 	return true;
 }
+
+mat4 get_modelview_eye(int channel) {
+	vec2 uv = gl_FragCoord.xy / viewport_dims;
+	float view = view_from_fragment_component(uv, channel);
+	mat4 MV = get_modelview_matrix();
+	stereo_translate_modelview_matrix(view, MV);
+	return MV;
+}

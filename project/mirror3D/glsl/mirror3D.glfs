@@ -22,6 +22,8 @@ uniform float depth_scale = 0.001;
 uniform int raymarch_limit;
 uniform float ray_length_m;
 uniform float view;
+uniform bool show_marched_depth;
+uniform bool show_sampled_depth;
 
 
 // this is adapted point.glfs
@@ -105,6 +107,7 @@ vec4 pixel_coordinates_to_color(vec2 xp);
 mat2 rotate_2d(float rotation);
 bool inverse_construct_point(in vec3 p, out vec2 xp, out float depth);
 bool inverse_construct_point_v2(in vec3 p, out vec2 xp);
+mat4 get_modelview_eye(int channel);
 // ***** end interface of mirror3D.glsl *****************************
 
 uniform calibration color_calib;
@@ -145,7 +148,6 @@ void main()
 		Ray start_ray, current_ray;
 		vec4 final_color = vec4(1,0,0,1);
 		vec4 color;
-		vec3 p;
 		
 		compute_sub_pixel_rays(ro, rd);
 		
@@ -155,20 +157,21 @@ void main()
 		float max_ray_depth, max_sample_depth, ray_depth;
 		vec2 xp;
 		bool is_terrain = true;
+		vec3 marched_ray_depth, sampled_depth;
 		
 		for (int c = 0;  c < 3; c++){
 			max_ray_depth = 0;
 			max_sample_depth = 0;
 			hit_color[c] = false;
 			int type, prev_type, classify;
-			vec3 sample_point;
+			vec3 sample_point, p;
 
 			for (int s = 1; s < raymarch_limit; s++){
-				ro[c].x = ro[c].x + view;
+				ro[c].x = ro[c].x + view*1000;
 				sample_point = ro[c] + rd[c] * s * ray_length_m;
+				sample_point = vec3(get_modelview_matrix() * vec4(sample_point, 1.0));
 				float ray_depth = sample_point.z;
 				if (inverse_construct_point_v2(sample_point, xp)){
-					xp = vec2(vec4(xp, 0,0));
 					depth = lookup_depth(ivec2(xp));
 					if (depth > ray_depth){
 						type = IN_FRONT;
@@ -179,19 +182,25 @@ void main()
 					is_terrain = false;
 				}
 				if (!construct_point(xp, depth, p))
-					final_color[c] = 1;
+					continue;
+				//get_modelview_matrix()*
 				if (prev_type != type && type != IN_FRONT){
 					hit_color[c] = true;
+					marched_ray_depth[c] = sample_point.z;
 					break;
 				}else{
 					prev_type = type;
 				}
 			}
+
+			// debug colors
+			sampled_depth[c] = sample_point.x;
 			lookup_color(p, color);
 			final_color[c] = color[c];
+			
 		}
 		
-		// debugging: make black transparent
+		// catching bad lookups: make black transparent
 		if (final_color.xyz == vec3(0,0,0)){
 			final_color.w = .1;
 		}
@@ -207,6 +216,14 @@ void main()
 		if (!hit_any_color){
 			final_color = vec4 (1,0,0,1);
 		}
+
+		if (show_marched_depth){
+			final_color = vec4(marched_ray_depth, 1.0);
+		}
+		else if (show_sampled_depth){
+			final_color = vec4(sampled_depth, 1.0);
+		}
+
 		//final_color = vec4(0,0,lookup_depth(ivec2(xp),1);
 		finish_fragment(final_color, gl_FragCoord.z + fi.depth_offset);
 	}

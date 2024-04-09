@@ -170,10 +170,10 @@ protected:
 	bool show_calculated_frustum_size = false;
 	bool do_raytracing = false;
 	float view = 0;
-	bool undistort_first = true;
-	bool do_lookup_depth = false;
 	mat23 iMV, MV;
 	int bf_size = 10;
+	bool fs_show_marched_depth = false;
+	bool fs_show_sampled_depth = false;
 
 	float step_size = 0.01;
 	int step = 100;
@@ -330,14 +330,20 @@ public:
 		add_member_control(this, "show camera position", show_camera, "check");
 		add_member_control(this, "show calculated frustum size", show_calculated_frustum_size, "check");
 		add_member_control(this, "cull mode", coloring, "dropdown", "enums='color,normals,brute-force,mirror, experiment'");
+		
+		// raymarching - inherited
 		add_member_control(this, "Eye Separation Factor", shader_calib.eye_separation_factor, "value_slider", "min=0;max=20;ticks=true");
 		add_member_control(this, "Debug Matrices", debug_matrices, "check");
 		add_member_control(this, "Interpolate View Matrix", shader_calib.interpolate_view_matrix, "check");
+		
+		// raymarching - my params
 		add_member_control(this, "View Eye Positions", visualize_eye_positions, "check");
 		add_member_control(this, "bf_size", bf_size, "value_slider", "min=0;max=100;step=1");
-		add_member_control(this, "rc step size", step_size, "value_slider", "min=0;max=0.1;step=0.001");
-		add_member_control(this, "rc iterations", step, "value_slider", "min=0;max=500;step=1");
+		add_member_control(this, "ray step length[m]", step_size, "value_slider", "min=0;max=0.1;step=0.001");
+		add_member_control(this, "max iter raymarching", step, "value_slider", "min=0;max=500;step=1");
 		add_member_control(this, "current_view", view, "value_slider", "min=-1;max=1;step=.01");
+		add_member_control(this, "debug: max ray depth", fs_show_marched_depth, "check");
+		add_member_control(this, "debug: final sampled depth", fs_show_sampled_depth, "check");
 
 		if (begin_tree_node("capture", is_running)) {
 			align("\a");
@@ -607,6 +613,8 @@ public:
 			pr.ref_prog().set_uniform(ctx, "raymarch_limit", step);
 			pr.ref_prog().set_uniform(ctx, "ray_length_m", step_size);
 			pr.ref_prog().set_uniform(ctx, "view", view);
+			pr.ref_prog().set_uniform(ctx, "show_marched_depth", fs_show_marched_depth);
+			pr.ref_prog().set_uniform(ctx, "show_sampled_depth", fs_show_sampled_depth);
 			pr.draw(ctx, 0, sP.size()); // only using sP size with geometryless rendering
 			pr.disable(ctx);
 			if (pr.do_lookup_color())
