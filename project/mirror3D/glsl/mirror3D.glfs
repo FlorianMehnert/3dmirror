@@ -159,6 +159,7 @@ void main()
 		vec2 xp;
 		bool is_terrain = true;
 		vec3 marched_ray_depth, sampled_depth;
+		vec4 tmp;
 		
 		for (int c = 0;  c < 3; c++){
 			max_ray_depth = 0;
@@ -166,14 +167,16 @@ void main()
 			hit_color[c] = false;
 			int type, prev_type, classify;
 			vec3 ray_world, ray_world_correct_direction, p;
-
+			
 			for (int s = 1; s < raymarch_limit; s++) {
 				ro[c].x = ro[c].x + view;
-				ray_world = ro[c] + rd[c] * s * ray_length_m;
-				ray_world_correct_direction = vec3(extractViewMatrix(get_modelview_matrix()) * vec4(ray_world, 1.0));
+				ray_world = ro[c] + rd[c] * s * ray_length_m; 
+				ray_world_correct_direction = vec3(inverse(extractViewMatrix(get_modelview_matrix())) * vec4(ray_world, 1.0));
 				float ray_depth = ray_world.z;
-				
+				//ray_world_correct_direction.y = -ray_world_correct_direction.y;
+				tmp = vec4(vec3(ray_world_correct_direction), 1.0); // pos: rd, ~ro, ray_world, ray_world_correct_direction,
 				if (inverse_construct_point_v2(ray_world_correct_direction, xp)) {
+					
 					if (xp.x > 512 || xp.x < 0 || xp.y > 512 || xp.y < 0 )
 						continue;
 
@@ -231,7 +234,7 @@ void main()
 		else if (show_sampled_depth) {
 			final_color = vec4(sampled_depth, 1.0);
 		}
-
+		//final_color = tmp;
 		//final_color = vec4(0,0,lookup_depth(ivec2(xp),1);
 		finish_fragment(final_color, gl_FragCoord.z + fi.depth_offset);
 	}
