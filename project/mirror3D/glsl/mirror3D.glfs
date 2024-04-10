@@ -108,7 +108,7 @@ mat2 rotate_2d(float rotation);
 bool inverse_construct_point(in vec3 p, out vec2 xp, out float depth);
 bool inverse_construct_point_v2(in vec3 p, out vec2 xp);
 mat4 get_modelview_eye(int channel);
-mat4 extractViewMatrix(mat4 MV);
+mat4 extract_view_matrix(mat4 MV);
 // ***** end interface of mirror3D.glsl *****************************
 
 uniform calibration color_calib;
@@ -171,20 +171,22 @@ void main()
 			for (int s = 1; s < raymarch_limit; s++) {
 				ro[c].x = ro[c].x + view;
 				ray_world = ro[c] + rd[c] * s * ray_length_m; 
-				mat4 view_matrix = extractViewMatrix(get_modelview_matrix());
+				mat4 view_matrix = extract_view_matrix(get_modelview_matrix());
 				mat4 model_matrix = view_matrix * get_inverse_modelview_matrix();
+				mat4 model_matrix_eye = view_matrix * inverse(get_modelview_eye(c));
+				mat4 difference = model_matrix;
+				difference[3].xyz = model_matrix_eye[3].xyz-model_matrix[3].xyz;
 				ray_world_correct_direction = vec3(view_matrix * vec4(ray_world, 1.0));
+
 				float ray_depth = ray_world.z;
 				
 				ray_world_correct_direction.x = -ray_world_correct_direction.x;
+				tmp = vec4(ray_world_correct_direction,1);
 				if (inverse_construct_point_v2(ray_world_correct_direction, xp)) {
 					if (xp.x > 512 || xp.x < 0 || xp.y > 512 || xp.y < 0 )
 						continue;
 
 					depth = lookup_depth(ivec2(xp));
-
-					if (!bool(depth))
-						continue;
 
 					if (depth * depth_scale > ray_depth)
 						type = IN_FRONT;
@@ -192,6 +194,7 @@ void main()
 						type = BEHIND;
 					
 					is_terrain = true;
+
 				} else {
 					is_terrain = false;
 				}
@@ -202,9 +205,8 @@ void main()
 					if (type == BEHIND && prev_type == IN_FRONT) {
 						hit_color[c] = true;
 						break;
-					} else {
-						prev_type = type;
-					}
+					} 
+					prev_type = type;
 				}
 			}
 			marched_ray_depth = ray_world_correct_direction;
@@ -240,7 +242,8 @@ void main()
 		else if (show_sampled_depth) {
 			final_color = vec4(sampled_depth/5, 1.0);
 		}
-		//final_color = vec4(0,0,lookup_depth(ivec2(xp),1);
+
+		//final_color = tmp;
 		finish_fragment(final_color, gl_FragCoord.z + fi.depth_offset);
 	}
 }

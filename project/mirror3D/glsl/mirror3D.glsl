@@ -210,3 +210,10 @@ mat4 get_modelview_eye(int channel) {
 	stereo_translate_modelview_matrix(view, MV);
 	return MV;
 }
+
+mat4 extract_view_matrix(mat4 MV) {
+	mat4 M = inverse(MV);
+	mat4 V = M;
+	V[3] = vec4(0.0, 0.0, 0.0, 1.0);
+	return transpose(V);
+}
