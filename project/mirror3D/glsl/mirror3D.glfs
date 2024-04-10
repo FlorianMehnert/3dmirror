@@ -109,6 +109,7 @@ bool inverse_construct_point(in vec3 p, out vec2 xp, out float depth);
 bool inverse_construct_point_v2(in vec3 p, out vec2 xp);
 mat4 get_modelview_eye(int channel);
 mat4 extract_view_matrix(mat4 MV);
+vec3 world_to_marching(vec3 ro, vec3 rd, float ray_length_m, float s, int c, out vec3 ray_world);
 // ***** end interface of mirror3D.glsl *****************************
 
 uniform calibration color_calib;
@@ -143,24 +144,17 @@ void main()
 	
 	// experimenting
 	} else if (coloring == 4) {
-		vec3 ro[3], rd[3], eye_sample_clip_space;
-		vec2 texture_eye_sample, xu;
-
-		Ray start_ray, current_ray;
+		vec2 xp;
+		vec3 ro[3], rd[3], marched_ray_depth, sampled_depth;
 		vec4 final_color = vec4(1,0,0,1);
-		vec4 color;
+		vec4 color, tmp;
+		bool hit_color[3];
+		float depth, max_ray_depth, max_sample_depth, ray_depth;
+		bool is_terrain = true;
 		
 		compute_sub_pixel_rays(ro, rd);
 		
 		// *** by hand reconstructing texture pixel space of kinect from ray-origin ***
-		float depth;
-		bool hit_color[3], befront[3];
-		float max_ray_depth, max_sample_depth, ray_depth;
-		vec2 xp;
-		bool is_terrain = true;
-		vec3 marched_ray_depth, sampled_depth;
-		vec4 tmp;
-		
 		for (int c = 0;  c < 3; c++){
 			max_ray_depth = 0;
 			max_sample_depth = 0;
@@ -170,14 +164,9 @@ void main()
 			
 			for (int s = 1; s < raymarch_limit; s++) {
 				ro[c].x = ro[c].x + view;
-				ray_world = ro[c] + rd[c] * s * ray_length_m; 
-				mat4 view_matrix = extract_view_matrix(get_modelview_matrix());
-				mat4 model_matrix = view_matrix * get_inverse_modelview_matrix();
-				mat4 model_matrix_eye = view_matrix * inverse(get_modelview_eye(c));
-				mat4 difference = model_matrix;
-				difference[3].xyz = model_matrix_eye[3].xyz-model_matrix[3].xyz;
-				ray_world.x = -ray_world.x;
-				ray_world_correct_direction = vec3(view_matrix * vec4(ray_world, 1.0));
+
+				// transform apply view matrix and flip x
+				ray_world_correct_direction = world_to_marching(ro[c], rd[c], ray_length_m, s, c, ray_world);
 
 				float ray_depth = ray_world.z;
 				
@@ -192,9 +181,7 @@ void main()
 						type = IN_FRONT;
 					else
 						type = BEHIND;
-					
 					is_terrain = true;
-
 				} else {
 					is_terrain = false;
 				}

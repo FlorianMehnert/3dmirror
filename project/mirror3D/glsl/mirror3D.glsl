@@ -217,3 +217,9 @@ mat4 extract_view_matrix(mat4 MV) {
 	V[3] = vec4(0.0, 0.0, 0.0, 1.0);
 	return transpose(V);
 }
+
+vec3 world_to_marching(vec3 ro, vec3 rd, float ray_length_m, float s, int c, out vec3 ray_world) {
+	ray_world = ro + rd * s * ray_length_m;
+	//ray_world.x = -ray_world.x;
+	return vec3(get_modelview_matrix() * inverse(get_modelview_eye(c)) * vec4(ray_world, 1.0));
+}

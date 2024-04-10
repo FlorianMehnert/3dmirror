@@ -61,18 +61,18 @@ void main()
 	ivec2 xp = position.xy;
 	uint depth = uint(position.z);
 	if (geometry_less_rendering) {
-#if GEOMETRY_LESS_MODE == 0
+	#if GEOMETRY_LESS_MODE == 0
 		xp.y = gl_VertexID/int(get_depth_width());
 		xp.x = gl_VertexID- xp.y*int(get_depth_width());
-#endif
-#if GEOMETRY_LESS_MODE == 1
+	#endif
+	#if GEOMETRY_LESS_MODE == 1
 		xp.y = gl_InstanceID;
 		xp.x = gl_VertexID;
-#endif
-#if GEOMETRY_LESS_MODE == 2
+	#endif
+	#if GEOMETRY_LESS_MODE == 2
 		xp.y = gl_InstanceID/int(get_depth_width());
 		xp.x = gl_InstanceID - xp.y*int(get_depth_width());
-#endif
+	#endif
 		depth = lookup_depth(xp);
 	}
 	vo.depth_offset = depth_offset;

@@ -174,6 +174,7 @@ protected:
 	int bf_size = 10;
 	bool fs_show_marched_depth = false;
 	bool fs_show_sampled_depth = false;
+	bool screen_quad = false;
 
 	float step_size = 0.01;
 	int step = 100;
@@ -293,9 +294,15 @@ public:
 				break;
 			case 'C': 
 				coloring = (int) coloring < 4 ? (ColorMode)(((int) coloring)+1) : COLOR_TEX_SM;
+				on_set(&coloring);
 				return true;
 			case 'X':
 				coloring = (int) coloring > 0 ? (ColorMode)(((int)coloring) - 1) : EXPERIMENT;
+				on_set(&coloring);
+				return true;
+			case '0':
+				shader_calib.eye_separation_factor = 0;
+				on_set(&shader_calib.eye_separation_factor);
 				return true;
 			case cgv::gui::KEY_Left: if (ka != cgv::gui::KeyAction::KA_RELEASE) {
 				shader_calib.eye_separation_factor -= 0.0625f;
@@ -344,6 +351,7 @@ public:
 		add_member_control(this, "current_view", view, "value_slider", "min=-1;max=1;step=.01");
 		add_member_control(this, "debug: max ray depth", fs_show_marched_depth, "check");
 		add_member_control(this, "debug: final sampled depth", fs_show_sampled_depth, "check");
+		add_member_control(this, "single quad geo", screen_quad, "check");
 
 		if (begin_tree_node("capture", is_running)) {
 			align("\a");
@@ -615,6 +623,7 @@ public:
 			pr.ref_prog().set_uniform(ctx, "view", view);
 			pr.ref_prog().set_uniform(ctx, "show_marched_depth", fs_show_marched_depth);
 			pr.ref_prog().set_uniform(ctx, "show_sampled_depth", fs_show_sampled_depth);
+			pr.ref_prog().set_uniform(ctx, "quad_geo", screen_quad);
 			pr.draw(ctx, 0, sP.size()); // only using sP size with geometryless rendering
 			pr.disable(ctx);
 			if (pr.do_lookup_color())
