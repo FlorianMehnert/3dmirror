@@ -226,12 +226,13 @@ void main()
 
 		// debug: check if ever hit
 		bool hit_any_color;
-		hit_any_color = false;
 		for (int i = 0;  i < 3; i++) {
 			if (hit_color[i]) {
 				hit_any_color = true;
 			}
 		}
+		
+		hit_any_color=hit_color[0] && hit_color[1] && hit_color[2];
 		
 		if (!hit_any_color) {
 			final_color = vec4 (1,0,0,1);
