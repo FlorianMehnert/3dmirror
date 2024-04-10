@@ -176,11 +176,11 @@ void main()
 				mat4 model_matrix_eye = view_matrix * inverse(get_modelview_eye(c));
 				mat4 difference = model_matrix;
 				difference[3].xyz = model_matrix_eye[3].xyz-model_matrix[3].xyz;
+				ray_world.x = -ray_world.x;
 				ray_world_correct_direction = vec3(view_matrix * vec4(ray_world, 1.0));
 
 				float ray_depth = ray_world.z;
 				
-				ray_world_correct_direction.x = -ray_world_correct_direction.x;
 				tmp = vec4(ray_world_correct_direction,1);
 				if (inverse_construct_point_v2(ray_world_correct_direction, xp)) {
 					if (xp.x > 512 || xp.x < 0 || xp.y > 512 || xp.y < 0 )
@@ -213,7 +213,9 @@ void main()
 
 			// debug colors
 			sampled_depth[c] = p.z;
-			lookup_color(p, color);
+			if (!lookup_color(p, color)){
+			discard;
+			};
 			final_color[c] = color[c];	
 		}
 		
