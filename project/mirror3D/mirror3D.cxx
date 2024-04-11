@@ -98,7 +98,6 @@ protected:
 
 	float distance = 5.0;
 	float discard = 0.02f;
-	float fdepth = 1.0f;
 	bool depth_lookup = false;
 	int bf_size = 10;
 	bool fs_show_marched_depth = false;
@@ -255,7 +254,6 @@ public:
 		add_member_control(this, "debug_frame_timing", debug_frame_timing, "check");
 		add_member_control(this, "distance", distance, "value_slider", "min=0;max=10");
 		add_member_control(this, "discard_dst", discard, "value_slider", "min=0;max=1;step=0.01");
-		add_member_control(this, "frustum depth", fdepth, "value_slider", "min=0;max=10;step=0.01");
 		add_member_control(this, "one time execution", one_tap_press, "toggle");
 		add_member_control(this, "cull mode", coloring, "dropdown", "enums='color, normals, brute-force, mirror, raymarching'");
 		
@@ -377,7 +375,6 @@ public:
 			pr.ref_prog().set_uniform(ctx, "max_distance", distance);
 			pr.ref_prog().set_uniform(ctx, "discard_dst", discard);
 			pr.ref_prog().set_uniform(ctx, "coloring", (int)coloring);
-			pr.ref_prog().set_uniform(ctx, "depth_in_which_to_lookup", fdepth);
 			shader_calib.set_uniforms(ctx, pr.ref_prog(), *stereo_view_ptr);
 			pr.ref_prog().set_uniform(ctx, "eye_separation", shader_calib.eye_separation_factor/1000);
 			pr.ref_prog().set_uniform(ctx, "bf_size", bf_size);
