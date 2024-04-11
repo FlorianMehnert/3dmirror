@@ -1,13 +1,35 @@
 #version 330 core
+#define INVALID 1
+#define FOUND_POINT 2
+#define NOTHING 3
+#define NO_SURFACE 5
+#define SURFACE 6
+#define BEHIND 7
+#define IN_FRONT 8
 
 /*
 The following interface is implemented in this shader:
 // ***** begin interface of mirror3D.glsl *****************************
-vec3 ray_trace_pixel(vec3 ro, vec3 rd, out float depth);
-mat4 kinect_projection_matrix(float fx, float fy, float cx, float cy, int image_height, float near_clip, float far_clip);
-mat4 get_model_view_matrix_translation(vec3 ro);
-void march_along(vec3 ro, vec3 rd, out vec4 color, out float depth);
+#define BREAK 1
+#define CONTINUE 2
 vec4 kinect_to_world_space(vec2 uv);
+mat4 get_modelview_matrix_view(int color_channel);
+vec4 intersect_depth_image_bf();
+float get_depth(ivec2 xp);
+struct Ray{
+	vec3 origin;
+	vec3 direction;
+};
+vec3 vec3_ray(Ray ray);
+void set_raylength(Ray inray, out Ray outray, int s, float step_width);
+vec4 pixel_coordinates_to_color(vec2 xp);
+mat2 rotate_2d(float rotation);
+bool inverse_construct_point(in vec3 p, out vec2 xp, out float depth);
+bool inverse_construct_point_v2(in vec3 p, out vec2 xp);
+mat4 get_modelview_eye(int channel);
+mat4 extract_view_matrix(mat4 MV);
+vec3 world_to_marching(vec3 ro, vec3 rd, float ray_length_m, float s, int c, out vec3 ray_world);
+march_along(vec3 ro, vec3 rd, float ray_length_m, float s, int c, out vec3 ray_world_correct_direction, out vec3 ray_world, out vec3 p);
 // ***** end interface of mirror3D.glsl *****************************
 */
 
@@ -218,8 +240,41 @@ mat4 extract_view_matrix(mat4 MV) {
 	return transpose(V);
 }
 
-vec3 world_to_marching(vec3 ro, vec3 rd, float ray_length_m, float s, int c, out vec3 ray_world) {
+vec3 world_to_marching(vec3 ro, vec3 rd, float ray_length_m, float s, int c, in out vec3 ray_world) {
 	ray_world = ro + rd * s * ray_length_m;
-	//ray_world.x = -ray_world.x;
 	return vec3(get_modelview_matrix() * inverse(get_modelview_eye(c)) * vec4(ray_world, 1.0));
+}
+
+int march_along(vec3 ro, vec3 rd, float ray_length_m, out float ray_depth, float s, int c, out vec3 ray_world_correct_direction, in out vec3 ray_world, out vec3 p) {
+	vec2 xp;
+	float depth;
+	int type, prev_type, classify;
+	bool is_terrain;
+
+	// transform apply view matrix and flip x
+	ray_world_correct_direction = world_to_marching(ro, rd, ray_length_m, s, c, ray_world);
+	ray_depth = ray_world.z;
+	if (inverse_construct_point_v2(ray_world_correct_direction, xp)) {
+		if (xp.x > 512 || xp.x < 0 || xp.y > 512 || xp.y < 0)
+			return INVALID;
+
+		depth = lookup_depth(ivec2(xp));
+
+		if (depth * depth_scale > ray_depth)
+			type = IN_FRONT;
+		else
+			type = BEHIND;
+		is_terrain = true;
+	}
+	else {
+		is_terrain = false;
+	}
+	if (is_terrain) {
+		if (!construct_point(xp, depth, p))
+			return INVALID;
+		if (type == BEHIND && prev_type == IN_FRONT) 
+			return FOUND_POINT;
+		prev_type = type;
+	}
+	return 0;
 }

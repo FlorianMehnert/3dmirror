@@ -12,7 +12,6 @@ uniform float viewport_height = 1080.0;
 uniform float blend_width_in_pixel = 1.0;
 uniform float max_distance = 10.0;
 uniform bool construct_quads = false;
-uniform bool render_quads;
 uniform float discard_dst = 0.02;
 
 in POINT_GS {
