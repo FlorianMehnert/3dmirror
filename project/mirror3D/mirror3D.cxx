@@ -21,6 +21,7 @@
 #include <holo_disp/shader_display_calibration.h>
 #include <cgv/defines/quote.h>
 #include <cgv/render/shader_library.h>
+#include <cgv/render/performance_monitor.h>
 
 
 // only temporary for variance of depth frame
@@ -176,13 +177,13 @@ protected:
 	bool fs_show_sampled_depth = false;
 	bool screen_quad = false;
 
-	float step_size = 0.01;
+	float step_size = 0.05;
 	int step = 100;
 
 	enum ColorMode {
-		COLOR_TEX_SM, NORMAL, BRUTE_FORCE, MIRROR, EXPERIMENT
+		COLOR_TEX_SM, NORMAL, BRUTE_FORCE, MIRROR, RAYMARCHING
 	};
-	ColorMode coloring = EXPERIMENT;
+	ColorMode coloring = RAYMARCHING;
 
 	// dispatch each time the button state is toggled
 	bool one_tap_press = false;
@@ -247,23 +248,23 @@ public:
 		if (debug_frame_timing) {
 			static long long col_dev_ts = 0;
 			static long long dev_ts = 0;
-			std::cout << "frame: ";
-			auto nw = std::chrono::duration_cast<std::chrono::nanoseconds>(now_h.time_since_epoch()).count();
-			std::cout << ", color=" << (nw - color_frame.system_time_stamp) * 1e-6;
+			//std::cout << "frame: ";
+			//auto nw = std::chrono::duration_cast<std::chrono::nanoseconds>(now_h.time_since_epoch()).count();
+			//std::cout << ", color=" << (nw - color_frame.system_time_stamp) * 1e-6;
 			//std::cout << "(" << color_frame.device_time_stamp << ")";
-			std::cout << "(" << (color_frame.device_time_stamp - col_dev_ts) * 1e-6 << ")";
-			col_dev_ts = color_frame.device_time_stamp;
-			std::cout << ", depth=" << (nw - depth_frame.system_time_stamp) * 1e-6;
+			//std::cout << "(" << (color_frame.device_time_stamp - col_dev_ts) * 1e-6 << ")";
+			//col_dev_ts = color_frame.device_time_stamp;
+			//std::cout << ", depth=" << (nw - depth_frame.system_time_stamp) * 1e-6;
 			//std::cout << "(" << (depth_frame.device_time_stamp- color_frame.device_time_stamp)*1e-6 << ")";
-			std::cout << "(" << (depth_frame.device_time_stamp - dev_ts) * 1e-6 << ")";
-			dev_ts = depth_frame.device_time_stamp;
-			std::cout << " -> " << (depth_frame.device_time_stamp - color_frame.device_time_stamp) * 1e-6;
-			std::cout << "depth frame ";
-			std::cout << std::endl;
+			//std::cout << "(" << (depth_frame.device_time_stamp - dev_ts) * 1e-6 << ")";
+			//dev_ts = depth_frame.device_time_stamp;
+			//std::cout << " -> " << (depth_frame.device_time_stamp - color_frame.device_time_stamp) * 1e-6;
+			//std::cout << "depth frame ";
+			//std::cout << std::endl;
 
 			// color_frame is using 4 bytes per pixel with 2048x1536 in BGR32 format - which wastes one color channel
 			// depth_frame is using 2 bytes per pixel DEP16 - probably double precision integer
-			std::cout << "color_frame_size:" << color_frame.buffer_size << "color_frame_resolution:" << color_frame << " depthframesize: " << depth_frame.buffer_size << "depth_frame_resolution:" << depth_frame << std::endl;
+			//std::cout << "color_frame_size:" << color_frame.buffer_size << "color_frame_resolution:" << color_frame << " depthframesize: " << depth_frame.buffer_size << "depth_frame_resolution:" << depth_frame << std::endl;
 		}
 		post_redraw();
 	}
@@ -297,7 +298,7 @@ public:
 				on_set(&coloring);
 				return true;
 			case 'X':
-				coloring = (int) coloring > 0 ? (ColorMode)(((int)coloring) - 1) : EXPERIMENT;
+				coloring = (int) coloring > 0 ? (ColorMode)(((int)coloring) - 1) : RAYMARCHING;
 				on_set(&coloring);
 				return true;
 			case '0':
@@ -336,7 +337,7 @@ public:
 		add_member_control(this, "render quads", render_quads, "check");
 		add_member_control(this, "show camera position", show_camera, "check");
 		add_member_control(this, "show calculated frustum size", show_calculated_frustum_size, "check");
-		add_member_control(this, "cull mode", coloring, "dropdown", "enums='color,normals,brute-force,mirror, experiment'");
+		add_member_control(this, "cull mode", coloring, "dropdown", "enums='color, normals, brute-force, mirror, raymarching'");
 		
 		// raymarching - inherited
 		add_member_control(this, "Eye Separation Factor", shader_calib.eye_separation_factor, "value_slider", "min=0;max=20;ticks=true");
@@ -344,6 +345,7 @@ public:
 		add_member_control(this, "Interpolate View Matrix", shader_calib.interpolate_view_matrix, "check");
 		
 		// raymarching - my params
+		provider::align("\a");
 		add_member_control(this, "View Eye Positions", visualize_eye_positions, "check");
 		add_member_control(this, "bf_size", bf_size, "value_slider", "min=0;max=100;step=1");
 		add_member_control(this, "ray step length[m]", step_size, "value_slider", "min=0;max=0.1;step=0.001");
@@ -352,6 +354,7 @@ public:
 		add_member_control(this, "debug: max ray depth", fs_show_marched_depth, "check");
 		add_member_control(this, "debug: final sampled depth", fs_show_sampled_depth, "check");
 		add_member_control(this, "single quad geo", screen_quad, "check");
+		provider::align("\b");
 
 		if (begin_tree_node("capture", is_running)) {
 			align("\a");
@@ -616,7 +619,7 @@ public:
 			pr.ref_prog().set_uniform(ctx, "depth_in_which_to_lookup", fdepth);
 			shader_calib.set_uniforms(ctx, pr.ref_prog(), *stereo_view_ptr);
 			calculate_inverse_modelview_matrix_rgbd_depth();
-			pr.ref_prog().set_uniform(ctx, "eye_separation", shader_calib.eye_separation_factor);
+			pr.ref_prog().set_uniform(ctx, "eye_separation", shader_calib.eye_separation_factor/1000);
 			pr.ref_prog().set_uniform(ctx, "bf_size", bf_size);
 			pr.ref_prog().set_uniform(ctx, "raymarch_limit", step);
 			pr.ref_prog().set_uniform(ctx, "ray_length_m", step_size);
