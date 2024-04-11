@@ -41,17 +41,6 @@
 using namespace cgv::render;
 using namespace cgv;
 
-struct Vertex {
-	float x;
-	float y;
-	float z;
-	unsigned int colors;
-};
-
-struct PointIndexBuffer {
-	int i, j;
-};
-
 class rgbd_mesh_renderer :
 	public rgbd::rgbd_point_renderer
 {
@@ -79,13 +68,6 @@ protected:
 	std::vector<usvec3> sP;
 	std::vector<rgb8> sC;
 	
-	// visualize calculated frustum extent
-	vec3 lu, bd;
-	float depth_calculated_frustum = 1.0f;
-
-	// show spheres that represent the left and right most
-	bool visualize_eye_positions = false;
-
 	// color warped to depth image is only needed in case CPU is used to lookup colors
 	rgbd::frame_type warped_color_frame;
 
@@ -95,12 +77,6 @@ protected:
 	cgv::render::box_wire_render_style box_wire_style;
 
 	cgv::render::view* view_ptr = 0;
-
-	// init intermediate pointcloud
-	point_cloud &intermediate_pcl = point_cloud();
-	
-	// init current pointcloud
-	point_cloud &current_pcl = point_cloud();
 
 	// color and depth frames from kinect
 	rgbd::frame_type depth_frame;
@@ -120,21 +96,10 @@ protected:
 	// somthing for the timer event from vr_rgbd
 	std::future<size_t> future_handle;
 
-	// element buffer object
-	GLuint ebo;
-
-	// shader shared buffer object creation
-	GLuint buffer_id = 0;
-
-	bool construct_quads = true;
 	float distance = 5.0;
 	float discard = 0.02f;
 	float fdepth = 1.0f;
-	bool render_quads = true;
 	bool depth_lookup = false;
-	bool show_camera = false;
-	bool do_raytracing = false;
-	mat23 iMV, MV;
 	int bf_size = 10;
 	bool fs_show_marched_depth = false;
 	bool fs_show_sampled_depth = false;
@@ -291,8 +256,6 @@ public:
 		add_member_control(this, "distance", distance, "value_slider", "min=0;max=10");
 		add_member_control(this, "discard_dst", discard, "value_slider", "min=0;max=1;step=0.01");
 		add_member_control(this, "frustum depth", fdepth, "value_slider", "min=0;max=10;step=0.01");
-		add_member_control(this, "depth of frustum", depth_calculated_frustum, "value_slider", "min=0;max=8;step=0.01");
-		add_member_control(this, "construct quads", construct_quads, "check");
 		add_member_control(this, "one time execution", one_tap_press, "toggle");
 		add_member_control(this, "cull mode", coloring, "dropdown", "enums='color, normals, brute-force, mirror, raymarching'");
 		
@@ -303,7 +266,6 @@ public:
 		
 		// raymarching - my params
 		provider::align("\a");
-		add_member_control(this, "View Eye Positions", visualize_eye_positions, "check");
 		add_member_control(this, "bf_size", bf_size, "value_slider", "min=0;max=100;step=1");
 		add_member_control(this, "ray step length[m]", step_size, "value_slider", "min=0;max=0.1;step=0.001");
 		add_member_control(this, "max iter raymarching", step, "value_slider", "min=0;max=500;step=1");
@@ -414,8 +376,6 @@ public:
 			pr.ref_prog().set_uniform(ctx, "color_image", 1);
 			pr.ref_prog().set_uniform(ctx, "max_distance", distance);
 			pr.ref_prog().set_uniform(ctx, "discard_dst", discard);
-			pr.ref_prog().set_uniform(ctx, "construct_quads", construct_quads);
-			pr.ref_prog().set_uniform(ctx, "render_quads", render_quads);
 			pr.ref_prog().set_uniform(ctx, "coloring", (int)coloring);
 			pr.ref_prog().set_uniform(ctx, "depth_in_which_to_lookup", fdepth);
 			shader_calib.set_uniforms(ctx, pr.ref_prog(), *stereo_view_ptr);
