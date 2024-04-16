@@ -66,6 +66,7 @@ protected:
 
 	// render data
 	std::vector<usvec3> sP;
+	std::array<usvec3, 512*512> aP;
 	std::vector<rgb8> sC;
 	
 	// color warped to depth image is only needed in case CPU is used to lookup colors
@@ -102,6 +103,7 @@ protected:
 	int bf_size = 10;
 	bool fs_show_marched_depth = false;
 	bool fs_show_sampled_depth = false;
+	bool construct_render_data_using_array;
 
 	float step_size = 0.05;
 	int step = 100;
@@ -227,6 +229,10 @@ public:
 				coloring = (int) coloring > 0 ? (ColorMode)(((int)coloring) - 1) : RAYMARCHING;
 				on_set(&coloring);
 				return true;
+			case 'A':
+				construct_render_data_using_array = !construct_render_data_using_array;
+				on_set(&construct_render_data_using_array);
+				return true;
 			case '0':
 				shader_calib.eye_separation_factor = 0;
 				on_set(&shader_calib.eye_separation_factor);
@@ -269,6 +275,8 @@ public:
 		add_member_control(this, "max iter raymarching", step, "value_slider", "min=0;max=500;step=1");
 		add_member_control(this, "debug: max ray depth", fs_show_marched_depth, "check");
 		add_member_control(this, "debug: final sampled depth", fs_show_sampled_depth, "check");
+		add_member_control(this, "use array for geometry", construct_render_data_using_array, "check");
+		
 		provider::align("\b");
 
 		if (begin_tree_node("capture", is_running)) {
@@ -315,6 +323,22 @@ public:
 		#endif // #ifdef NDEBUG
 	}
 
+	void construct_my_render_data(
+		const rgbd::frame_type& depth_frame,
+		std::array<cgv::usvec3, 512*512>& sP,
+		uint16_t sub_sample, uint16_t sub_line_sample)
+	{
+		for (uint16_t y = 0; y < depth_frame.height; y += sub_sample)
+			for (uint16_t x = 0; x < depth_frame.width; x += sub_sample) {
+				if (((x % sub_line_sample) != 0) && ((y % sub_line_sample) != 0))
+					continue;
+				uint16_t depth = reinterpret_cast<const uint16_t&>(depth_frame.frame_data[(y * depth_frame.width + x) * depth_frame.get_nr_bytes_per_pixel()]);
+				if (depth == 0)
+					continue;
+				sP[x + depth_frame.width * y] = cgv::usvec3(x, y, depth);
+			}
+	}
+
 	void init_frame(cgv::render::context& ctx)
 	{
 			if (!view_ptr)
@@ -333,7 +357,10 @@ public:
 				}
 				else
 					// TODO: use own function to avoid pushback : alternatively use own construct function (without pushback)
-					rgbd::construct_rgbd_render_data(depth_frame, sP);
+					if (construct_render_data_using_array) 
+						construct_my_render_data(depth_frame, aP, 1, 1);
+					else 
+						rgbd::construct_rgbd_render_data(depth_frame, sP);
 			}
 			if (!stereo_view_ptr)
 				stereo_view_ptr = dynamic_cast<cgv::render::stereo_view*>(find_view_as_node());
