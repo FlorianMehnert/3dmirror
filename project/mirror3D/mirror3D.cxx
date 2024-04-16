@@ -41,17 +41,6 @@
 using namespace cgv::render;
 using namespace cgv;
 
-struct Vertex {
-	float x;
-	float y;
-	float z;
-	unsigned int colors;
-};
-
-struct PointIndexBuffer {
-	int i, j;
-};
-
 class rgbd_mesh_renderer :
 	public rgbd::rgbd_point_renderer
 {
@@ -79,18 +68,6 @@ protected:
 	std::vector<usvec3> sP;
 	std::vector<rgb8> sC;
 	
-	// visualize calculated frustum extent
-	vec3 lu, bd;
-	float depth_calculated_frustum = 1.0f;
-
-	// visualize truncated frustum
-	float cam_x = 0.0f;
-	float cam_y = 0.0f;
-	float cam_color_offset = 0.0f;
-
-	// show spheres that represent the left and right most
-	bool visualize_eye_positions = false;
-
 	// color warped to depth image is only needed in case CPU is used to lookup colors
 	rgbd::frame_type warped_color_frame;
 
@@ -100,12 +77,6 @@ protected:
 	cgv::render::box_wire_render_style box_wire_style;
 
 	cgv::render::view* view_ptr = 0;
-
-	// init intermediate pointcloud
-	point_cloud &intermediate_pcl = point_cloud();
-	
-	// init current pointcloud
-	point_cloud &current_pcl = point_cloud();
 
 	// color and depth frames from kinect
 	rgbd::frame_type depth_frame;
@@ -122,60 +93,15 @@ protected:
 
 	rgbd_mesh_renderer pr;
 
-	// regarding frustum rendering
-	attribute_array_manager aam_frustum;
-	std::vector<cgv::box3> boxes;
-	std::vector<cgv::rgba> box_colors;
-	//box_render_style brs;
-	box_wire_render_style brs;
-	float box_size = -0.999f;
-
-	shader_program compute_prog;
-	shader_program raycast_prog;
-
 	// somthing for the timer event from vr_rgbd
 	std::future<size_t> future_handle;
 
-	// buffer to hold all vertices for the compute shader
-	GLuint input_buffer;
-	GLuint points;
-	vec3 vertex_array[262144]; // 512 x 512
-	uvec3 vres;
-	int data[128];
-
-	// compute shader buffers
-	Vertex vertices[262144];
-
-	// raycast compute shader
-	GLuint vertexBuffer;
-	GLuint resultBuffer;
-	GLuint results2Buffer;
-
-	// index buffer
-	PointIndexBuffer PIB[262144];
-
-	// element buffer object
-	GLuint ebo;
-
-	// shader shared buffer object creation
-	GLuint buffer_id = 0;
-
-	bool construct_quads = true;
 	float distance = 5.0;
 	float discard = 0.02f;
-	float fdepth = 1.0f;
-	bool render_quads = true;
 	bool depth_lookup = false;
-	bool flip_y = true;
-	bool show_camera = false;
-	bool show_calculated_frustum_size = false;
-	bool do_raytracing = false;
-	float view = 0;
-	mat23 iMV, MV;
 	int bf_size = 10;
 	bool fs_show_marched_depth = false;
 	bool fs_show_sampled_depth = false;
-	bool screen_quad = false;
 
 	float step_size = 0.05;
 	int step = 100;
@@ -294,7 +220,7 @@ public:
 				}
 				break;
 			case 'C': 
-				coloring = (int) coloring < 4 ? (ColorMode)(((int) coloring)+1) : COLOR_TEX_SM;
+				coloring = (int) coloring < 4 ? (ColorMode)(((int) coloring) + 1) : COLOR_TEX_SM;
 				on_set(&coloring);
 				return true;
 			case 'X':
@@ -328,15 +254,7 @@ public:
 		add_member_control(this, "debug_frame_timing", debug_frame_timing, "check");
 		add_member_control(this, "distance", distance, "value_slider", "min=0;max=10");
 		add_member_control(this, "discard_dst", discard, "value_slider", "min=0;max=1;step=0.01");
-		add_member_control(this, "frustum depth", fdepth, "value_slider", "min=0;max=10;step=0.01");
-		add_member_control(this, "cam_x", cam_x, "value_slider", "min=0;max=2;step=0.01");
-		add_member_control(this, "cam_y", cam_y, "value_slider", "min=0;max=2;step=0.01");
-		add_member_control(this, "depth of frustum", depth_calculated_frustum, "value_slider", "min=0;max=8;step=0.01");
-		add_member_control(this, "construct quads", construct_quads, "check");
 		add_member_control(this, "one time execution", one_tap_press, "toggle");
-		add_member_control(this, "render quads", render_quads, "check");
-		add_member_control(this, "show camera position", show_camera, "check");
-		add_member_control(this, "show calculated frustum size", show_calculated_frustum_size, "check");
 		add_member_control(this, "cull mode", coloring, "dropdown", "enums='color, normals, brute-force, mirror, raymarching'");
 		
 		// raymarching - inherited
@@ -346,14 +264,11 @@ public:
 		
 		// raymarching - my params
 		provider::align("\a");
-		add_member_control(this, "View Eye Positions", visualize_eye_positions, "check");
 		add_member_control(this, "bf_size", bf_size, "value_slider", "min=0;max=100;step=1");
 		add_member_control(this, "ray step length[m]", step_size, "value_slider", "min=0;max=0.1;step=0.001");
 		add_member_control(this, "max iter raymarching", step, "value_slider", "min=0;max=500;step=1");
-		add_member_control(this, "current_view", view, "value_slider", "min=-1;max=1;step=.01");
 		add_member_control(this, "debug: max ray depth", fs_show_marched_depth, "check");
 		add_member_control(this, "debug: final sampled depth", fs_show_sampled_depth, "check");
-		add_member_control(this, "single quad geo", screen_quad, "check");
 		provider::align("\b");
 
 		if (begin_tree_node("capture", is_running)) {
@@ -369,51 +284,25 @@ public:
 			align("\a");
 			end_tree_node(prs);
 		}
-
-		if (begin_tree_node("box style", brs)) {
-			align("\a");
-			create_gui_base(this, *this);
-			add_gui("box style", brs);
-			align("\a");
-			end_tree_node(prs);
-		}
 		
 	}
 	bool init(cgv::render::context& ctx)
 	{
 		start_first_device();
 		ctx.set_bg_clr_idx(4);
-		aam_frustum.init(ctx);
 
 		// render points
 		cgv::render::ref_point_renderer(ctx, 1);
-		cgv::render::ref_box_wire_renderer(ctx, 1);
-		cgv::render::ref_rectangle_renderer(ctx, 1);
-		cgv::render::ref_sphere_renderer(ctx, 1);
-
-		init_dummy_compute_shader(ctx);
-		//init_raycast_compute_shader(ctx);
-
 		return pr.init(ctx);
 	}
 	void clear(cgv::render::context& ctx)
 	{
 		cgv::render::ref_point_renderer(ctx, -1);
-		cgv::render::ref_box_wire_renderer(ctx, -1);
-		cgv::render::ref_rectangle_renderer(ctx, -1);
-		cgv::render::ref_sphere_renderer(ctx, -1);
-
 		pr.clear(ctx);
 		if (is_running) {
 			is_running = false;
 			on_set_base(&is_running, *this);
 		}
-		aam_frustum.destruct(ctx);
-		glDeleteBuffers(1, &input_buffer);
-		glDeleteBuffers(1, &points);
-		glDeleteBuffers(1, &vertexBuffer);
-		glDeleteBuffers(1, &resultBuffer);
-		glDeleteBuffers(1, &results2Buffer);
 	}
 
 	// prints errors in debug builds if shader code is wrong
@@ -425,117 +314,6 @@ public:
 		}
 		#endif // #ifdef NDEBUG
 	}
-
-	void setup_compute_shader(cgv::render::context& ctx)
-	{
-		// enable, configure, run and disable program (see gradient_viewer.cxx in example plugins)
-
-		// see cgv_gl clod_point_renderer
-		if (!prog.build_program(ctx, "mirror3D.glpr", true)) {
-			std::cerr << "ERROR in setup_compute_shader::init() ... could not build program" << std::endl;
-		}
-	}
-
-	void init_dummy_compute_shader(context& ctx) {
-		if (!compute_prog.is_created())
-			compute_prog.build_program(ctx, "compute_test.glpr", true);
-		glGenBuffers(1, &input_buffer);
-		glBindBuffer(GL_SHADER_STORAGE_BUFFER, input_buffer);
-		std::iota(std::begin(data), std::end(data), 1);
-		glBufferData(GL_SHADER_STORAGE_BUFFER, sizeof(data), data, GL_DYNAMIC_COPY);
-		glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 0, input_buffer);
-	}
-
-	void update_dummy_compute_shader(cgv::render::context& ctx) {
-		
-		// calculate
-			compute_prog.enable(ctx);
-		glDispatchCompute(sizeof(data), 1, 1);
-		glMemoryBarrier(GL_SHADER_STORAGE_BARRIER_BIT);
-
-		// retrieve
-		glBindBuffer(GL_SHADER_STORAGE_BUFFER, input_buffer);
-		int* updatedData = (int*)glMapNamedBufferRange(input_buffer, 0, sizeof(data), GL_MAP_READ_BIT);
-		compute_prog.disable(ctx);
-		for (int i = 0; i < 5; ++i) {
-			int value = updatedData[i];
-			std::cout << "Element " << i << ": " << value << std::endl;
-		}
-		glUnmapBuffer(GL_SHADER_STORAGE_BUFFER);
-	}
-
-	void truncated_pyramid(cgv::render::context& ctx, float base_x, float base_y, float color_cam_offset, float height) {
-		int segments = 4;
-		float angle_step = 2.0f * M_PI / segments;
-		std::array<vec3,8> vertices;
-
-		for (int i = 0; i < segments; ++i) {
-			float angle = i * angle_step;
-			vertices[i] = vec3(0);
-		}
-
-		// generate vertices for top extent and rotate by 45 degrees
-		for (int i = 0; i < segments; ++i) {
-			float angle = i * angle_step;
-			float x = cos(angle);
-			float y = sin(angle);
-			vertices[i + 4] = vec3(x * cos(M_PI / 4.0f) - y * sin(M_PI / 4.0f), x * sin(M_PI / 4.0f) + y * cos(M_PI / 4.0f), height);
-		}
-		vec3 x_vector = vertices[5] - vertices[4];
-		vec3 y_vector = vertices[6] - vertices[5];
-
-		vertices[4] = vertices[4] - x_vector * base_x - y_vector * base_y + y_vector * color_cam_offset;
-		vertices[5] = vertices[5] + x_vector * base_x - y_vector * base_y + y_vector * color_cam_offset;
-		vertices[6] = vertices[6] + x_vector * base_x + y_vector * base_y + y_vector * color_cam_offset;
-		vertices[7] = vertices[7] - x_vector * base_x + y_vector * base_y + y_vector * color_cam_offset;
-
-		static int F[4 * 4] = {
-			0, 1, 5, 4,
-			1, 2, 6, 5,
-			2, 3, 7, 6,
-			3, 0, 4, 7,
-		};
-
-		static int FN[6 * 4];
-		static float N[6 * 3];
-		
-		float V[8 * 3] = {
-			vertices[0][0], vertices[0][1], vertices[0][2],
-			vertices[1][0], vertices[1][1], vertices[1][2],
-			vertices[2][0], vertices[2][1], vertices[2][2],
-			vertices[3][0], vertices[3][1], vertices[3][2],
-			vertices[4][0], vertices[4][1], vertices[4][2],
-			vertices[5][0], vertices[5][1], vertices[5][2],
-			vertices[6][0], vertices[6][1], vertices[6][2],
-			vertices[7][0], vertices[7][1], vertices[7][2],
-		};
-
-		ctx.draw_edges_of_faces(V, N, 0, F, FN, 0, 4, 4, false);
-	}
-
-	 bool calculate_inverse_modelview_matrix_rgbd_depth() {
-		// get: MV matrix of depth camera
-		mat23 MV_depth = calib.depth.get_camera_matrix();
-
-		// Check if the matrix is invertible (determinant not equal to zero) + inverse calculation (there exist functions for that in GPU)
-		float detA = MV_depth(0, 0) * MV_depth(1, 1) - MV_depth(0, 1) * MV_depth(1, 0);
-		if (detA != 0) {
-			iMV(0, 0) = MV_depth(1, 1) / detA;
-			iMV(0, 1) = -MV_depth(0, 1) / detA;
-			iMV(0, 2) = (MV_depth(0, 1) * MV_depth(1, 2) - MV_depth(1, 1) * MV_depth(0, 2)) / detA;
-			iMV(1, 0) = -MV_depth(1, 0) / detA;
-			iMV(1, 1) = MV_depth(0, 0) / detA;
-			iMV(1, 2) = -(MV_depth(0, 0) * MV_depth(1, 2) - MV_depth(1, 0) * MV_depth(0, 2)) / detA;
-			return true;
-		}
-		return false;
-	}
-
-	 // since pose - external calibration is identity matrix the projection matrix which is EM * IM is equivalent to IM
-	 mat4 projection_matrix_kinect_depth() {
-		 mat4 IM = calib.depth.get_homogeneous_camera_matrix();
-		 return IM;
-	 }
 
 	void init_frame(cgv::render::context& ctx)
 	{
@@ -560,10 +338,6 @@ public:
 			if (!stereo_view_ptr)
 				stereo_view_ptr = dynamic_cast<cgv::render::stereo_view*>(find_view_as_node());
 			
-			// show frustum
-			rgbd_inp.map_depth_to_point(0, 0, depth_calculated_frustum*1000, lu);
-			rgbd_inp.map_depth_to_point(512, 512, depth_calculated_frustum*1000, bd);
-
 	}
 	// I have a low resolution geometry created from a low res depth texture.I also have a color texture available which I want to use to color.The color texture has a higher resolution.How do I map the color in the fragment shader ?
 	void draw(cgv::render::context& ctx)
@@ -571,11 +345,6 @@ public:
 		if (!stereo_view_ptr)
 			return;
 		if (one_tap_press != one_tap_flag) {
-			update_dummy_compute_shader(ctx);
-			if (sP.size() > 0) {
-				std::cout << "sizeof elements in sP " << sizeof(sP[0]) << ", and size of sP: " << sP.size() << std::endl;
-				std::cout << "sizeof Vertex " << sizeof(Vertex) << std::endl;
-			}
 			one_tap_flag = one_tap_press;
 		}
 		if (!pr.ref_prog().is_linked())
@@ -588,13 +357,6 @@ public:
 			pr.set_calibration(calib);
 			calib_outofdate = false;
 		}
-
-		ctx.ref_surface_shader_program().enable(ctx);
-		ctx.push_modelview_matrix();
-		vec3 point_between_eyes = shader_calib.left_eye + vec3(0.5) * (shader_calib.right_eye - shader_calib.left_eye);
-		ctx.mul_modelview_matrix(cgv::math::translate4(point_between_eyes));
-		ctx.pop_modelview_matrix();
-		ctx.ref_surface_shader_program().disable(ctx);
 
 		if (view_ptr)
 			pr.set_y_view_angle(float(view_ptr->get_y_view_angle()));
@@ -612,20 +374,14 @@ public:
 			pr.ref_prog().set_uniform(ctx, "color_image", 1);
 			pr.ref_prog().set_uniform(ctx, "max_distance", distance);
 			pr.ref_prog().set_uniform(ctx, "discard_dst", discard);
-			pr.ref_prog().set_uniform(ctx, "construct_quads", construct_quads);
-			pr.ref_prog().set_uniform(ctx, "render_quads", render_quads);
 			pr.ref_prog().set_uniform(ctx, "coloring", (int)coloring);
-			pr.ref_prog().set_uniform(ctx, "depth_in_which_to_lookup", fdepth);
 			shader_calib.set_uniforms(ctx, pr.ref_prog(), *stereo_view_ptr);
-			calculate_inverse_modelview_matrix_rgbd_depth();
 			pr.ref_prog().set_uniform(ctx, "eye_separation", shader_calib.eye_separation_factor/1000);
 			pr.ref_prog().set_uniform(ctx, "bf_size", bf_size);
 			pr.ref_prog().set_uniform(ctx, "raymarch_limit", step);
 			pr.ref_prog().set_uniform(ctx, "ray_length_m", step_size);
-			pr.ref_prog().set_uniform(ctx, "view", view);
 			pr.ref_prog().set_uniform(ctx, "show_marched_depth", fs_show_marched_depth);
 			pr.ref_prog().set_uniform(ctx, "show_sampled_depth", fs_show_sampled_depth);
-			pr.ref_prog().set_uniform(ctx, "quad_geo", screen_quad);
 			pr.draw(ctx, 0, sP.size()); // only using sP size with geometryless rendering
 			pr.disable(ctx);
 			if (pr.do_lookup_color())
@@ -633,69 +389,8 @@ public:
 			if (pr.do_geometry_less_rendering())
 				depth_tex.disable(ctx); 
 			}
-
-		if (show_camera) {
-			ctx.ref_surface_shader_program().enable(ctx);
-			ctx.push_modelview_matrix();
-			ctx.set_color(cgv::rgb(0, 1, 0.2f));
-			truncated_pyramid(ctx, cam_x, cam_y, cam_color_offset / 10, fdepth);
-			ctx.pop_modelview_matrix();
-			ctx.ref_surface_shader_program().disable(ctx);
-		}
-		if (show_calculated_frustum_size) {
-			auto& bwr = ref_box_wire_renderer(ctx);
-			vec3 p1;
-			vec3 p2;
-
-			cgv::box3 box(lu, bd);
-			bwr.set_box(ctx, box);
-			box_wire_style.default_color = rgb(0, 0, 0);
-			bwr.set_render_style(box_wire_style);
-			bwr.render(ctx, 0, 1);
-		}
-
-		if (visualize_eye_positions) {
-			auto& sr1 = ref_sphere_renderer(ctx);
-			auto& sr2 = ref_sphere_renderer(ctx);
-			sr1.set_radius(ctx,.05f);
-			sr1.set_position(ctx, shader_calib.left_eye/2);
-			sr1.render(ctx, 0, 1);
-
-			sr2.set_position(ctx, shader_calib.right_eye / 2);
-			sr2.set_radius(ctx, .05f);
-
-			sr2.render(ctx, 0, 1);
-
-			// define sample (which would be ro + rd)
-			vec3 sample = cgv::math::lerp(shader_calib.left_eye/2, shader_calib.right_eye/2, view) + step * step_size * vec3(0, 0, 1.0f);
-			dvec2 mapped_sample;
-			
-			// map sample into space of depth camera: iMV * sample -> apply_distortion_model()
-			calib.depth.apply_distortion_model(dvec2(iMV * sample), mapped_sample);
-
-			if (mapped_sample[0] < -1.0 || mapped_sample[0] > 1.0 || mapped_sample[1] > 1.0 || mapped_sample[1] < -1.0) {
-			}
-			else {
-				auto& sr3 = ref_sphere_renderer(ctx);
-				auto& sr4 = ref_sphere_renderer(ctx);
-				uint16_t depth = reinterpret_cast<const uint16_t&>(depth_frame.frame_data[((mapped_sample[1]*256+256) * depth_frame.width + (mapped_sample[0]*256+256)) * depth_frame.get_nr_bytes_per_pixel()]);
-				sr3.set_position(ctx, vec3(sample));
-				rgb8 looked_up_color = rgb8(255, 0,0);
-				bool inside_frame = rgbd::lookup_color(vec3(mapped_sample, calib.depth_scale* depth), looked_up_color, color_frame, calib);
-				std::vector<rgb8> colors;
-				colors.push_back(looked_up_color);
-				sr3.set_color_array(ctx, colors);
-				sr3.set_radius(ctx, .05f);
-				sr3.render(ctx, 0, 1);
-				sr4.set_position(ctx, vec3(mapped_sample, step*step_size));
-				sr4.set_radius(ctx, .05f);
-				sr4.render(ctx, 0, 1);
-				projection_matrix_kinect_depth();
-			}
-		}
 			glEnable(GL_CULL_FACE);
 		}
-		
 };
 
 #include <cgv/base/register.h>

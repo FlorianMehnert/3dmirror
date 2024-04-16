@@ -93,6 +93,9 @@ bool lookup_color(vec3 p, float eps, out vec4 c);
 // ***** end interface of rgbd.glsl ***********************************
 
 // ***** begin interface of mirror3D.glsl *****************************
+#define INVALID 1
+#define FOUND_POINT 2
+#define NOTHING 3
 vec4 kinect_to_world_space(vec2 uv);
 mat4 get_modelview_matrix_view(int color_channel);
 vec4 intersect_depth_image_bf();
@@ -108,7 +111,7 @@ mat2 rotate_2d(float rotation);
 bool inverse_construct_point(in vec3 p, out vec2 xp);
 mat4 get_modelview_eye(int channel);
 mat4 extract_view_matrix(mat4 MV);
-vec3 world_to_marching(vec3 ro, vec3 rd, float ray_length_m, float s, int c, out vec3 ray_world);
+int march_along(vec3 ro, vec3 rd, float ray_length_m, out float ray_depth, float s, int c, out vec3 ray_world_correct_direction, in out vec3 ray_world, out vec3 p);
 // ***** end interface of mirror3D.glsl *****************************
 
 uniform calibration color_calib;
@@ -155,44 +158,14 @@ void main()
 		
 		// *** by hand reconstructing texture pixel space of kinect from ray-origin ***
 		for (int c = 0;  c < 3; c++){
-			max_ray_depth = 0;
-			max_sample_depth = 0;
 			hit_color[c] = false;
-			int type, prev_type, classify;
+			int result;
 			vec3 ray_world, ray_world_correct_direction, p;
 			
 			for (int s = 1; s < raymarch_limit; s++) {
-				ro[c].x = ro[c].x + view;
-
-				// transform apply inverse(MV_eye) and MV_camera
-				ray_world_correct_direction = world_to_marching(ro[c], rd[c], ray_length_m, s, c, ray_world);
-
-				float ray_depth = ray_world.z;
-				
-				tmp = vec4(ray_world_correct_direction,1);
-				if (inverse_construct_point(ray_world_correct_direction, xp)) {
-					if (xp.x > 512 || xp.x < 0 || xp.y > 512 || xp.y < 0 )
-						continue;
-
-					depth = lookup_depth(ivec2(xp));
-
-					if (depth * depth_scale > ray_depth)
-						type = IN_FRONT;
-					else
-						type = BEHIND;
-					is_terrain = true;
-				} else {
-					is_terrain = false;
-				}
-				if (is_terrain){
-					
-					if (!construct_point(xp, depth, p))
-						continue;
-					if (type == BEHIND && prev_type == IN_FRONT) {
-						hit_color[c] = true;
-						break;
-					} 
-					prev_type = type;
+				if (march_along(ro[c], rd[c], ray_length_m, ray_depth, s, c, ray_world_correct_direction, ray_world, p) == FOUND_POINT){
+				hit_color[c] = true;
+					break;
 				}
 			}
 			marched_ray_depth = ray_world_correct_direction;
@@ -218,7 +191,7 @@ void main()
 			}
 		}
 		
-		hit_any_color=hit_color[0] && hit_color[1] && hit_color[2];
+		hit_any_color = hit_color[0] && hit_color[1] && hit_color[2];
 		
 		if (!hit_any_color) {
 			final_color = vec4 (1,0,0,1);
@@ -232,7 +205,7 @@ void main()
 			final_color = vec4(sampled_depth/5, 1.0);
 		}
 
-		depth = max(max(marched_ray_depth[0], marched_ray_depth[1]), marched_ray_depth[2]);
+		//final_color = tmp;
 		finish_fragment(final_color, gl_FragCoord.z + fi.depth_offset);
 	}
 }
