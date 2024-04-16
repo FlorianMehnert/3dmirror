@@ -105,8 +105,7 @@ vec3 vec3_ray(Ray ray);
 void set_raylength(Ray inray, out Ray outray, int s, float step_width);
 vec4 pixel_coordinates_to_color(vec2 xp);
 mat2 rotate_2d(float rotation);
-bool inverse_construct_point(in vec3 p, out vec2 xp, out float depth);
-bool inverse_construct_point_v2(in vec3 p, out vec2 xp);
+bool inverse_construct_point(in vec3 p, out vec2 xp);
 mat4 get_modelview_eye(int channel);
 mat4 extract_view_matrix(mat4 MV);
 vec3 world_to_marching(vec3 ro, vec3 rd, float ray_length_m, float s, int c, out vec3 ray_world);
@@ -135,14 +134,14 @@ void main()
 		vec3 ro[3], rd[3];
 		vec4 hit_color, final_color;
 		compute_sub_pixel_rays(ro, rd);
-		for (int i=0; i < 3; i++){
+		for (int i = 0; i < 3; i++){
 			lookup_color(ro[i] + rd[i], hit_color);
 			final_color[i] = hit_color[i];
 		}
 		// remember different modelview matricies for each view inbetween the eyes
 		finish_fragment(hit_color, gl_FragCoord.z + fi.depth_offset);
 	
-	// experimenting
+	// working raymarching
 	} else if (coloring == 4) {
 		vec2 xp;
 		vec3 ro[3], rd[3], marched_ray_depth, sampled_depth;
@@ -165,13 +164,13 @@ void main()
 			for (int s = 1; s < raymarch_limit; s++) {
 				ro[c].x = ro[c].x + view;
 
-				// transform apply view matrix and flip x
+				// transform apply inverse(MV_eye) and MV_camera
 				ray_world_correct_direction = world_to_marching(ro[c], rd[c], ray_length_m, s, c, ray_world);
 
 				float ray_depth = ray_world.z;
 				
 				tmp = vec4(ray_world_correct_direction,1);
-				if (inverse_construct_point_v2(ray_world_correct_direction, xp)) {
+				if (inverse_construct_point(ray_world_correct_direction, xp)) {
 					if (xp.x > 512 || xp.x < 0 || xp.y > 512 || xp.y < 0 )
 						continue;
 
@@ -233,7 +232,7 @@ void main()
 			final_color = vec4(sampled_depth/5, 1.0);
 		}
 
-		//final_color = tmp;
+		depth = max(max(marched_ray_depth[0], marched_ray_depth[1]), marched_ray_depth[2]);
 		finish_fragment(final_color, gl_FragCoord.z + fi.depth_offset);
 	}
 }

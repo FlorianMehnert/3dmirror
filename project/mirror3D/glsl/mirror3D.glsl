@@ -170,24 +170,7 @@ mat2 rotate_2d(float rotation) {
 		sin(rotation), cos(rotation));
 }
 
-bool inverse_construct_point(in vec3 p, out vec2 xp, out float depth) {
-	mat2 J;
-	vec2 xu, xd;
-	xp = p.xy;
-	xu = xp;
-	int result = apply_distortion_model(xp, xu, J, depth_calib);
-	xd = image_to_pixel_coordinates(xp, depth_calib);
-	if (result != SUCCESS) {
-		return false;
-	}
-	float depth_m = p.z/depth_scale;
-	vec3 kinect_point = vec3(xu / depth_m, depth_m);
-	xp = kinect_point.xy;
-	depth = kinect_point.z;
-	return true;
-}
-
-bool inverse_construct_point_v2(in vec3 p, out vec2 xp)
+bool inverse_construct_point(in vec3 p, out vec2 xp)
 {
 	mat2 J;
 	vec2 xu, xd;

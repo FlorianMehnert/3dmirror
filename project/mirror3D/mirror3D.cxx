@@ -437,7 +437,6 @@ public:
 	}
 
 	void init_dummy_compute_shader(context& ctx) {
-		// TODO: delete Buffer
 		if (!compute_prog.is_created())
 			compute_prog.build_program(ctx, "compute_test.glpr", true);
 		glGenBuffers(1, &input_buffer);
