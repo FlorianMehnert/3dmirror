@@ -26,8 +26,16 @@ git clone --recurse-submodules https://github.com/FlorianMehnert/3dmirror.git
 4. open the batch file [`define_platform.bat`](../cgv/define_platform.bat) and set to 64
 5. bind the .pj extension to the [`generate_makefiles.bat`](../cgv/bin/generate_makefiles.bat)
 
+## modify the cgv framework so my application works 🙈
+- find the point_renderer.cxx in the cgv framework under libs/cgv_gl/point_renderer.cxx and comment the two lines:
+```cpp
+if (!has_point_sizes)
+    ref_prog().set_attribute(ctx, "point_size", prs.point_size);
+```
+
 ## things to fix on windows
 - Ansii color support for Win10:
     - press <kbd>![Windows Key](https://i.stack.imgur.com/B8Zit.png)</kbd> and type `regedit`
     - HKEY_CURRENT_USER -> Console -> <kbd>Right-Click</kbd> -> New -> DWORD -> VirtualTerminalLevel
     - set this new variable to 1
+- when using the glsl highlighting addon for VisualStudio2022 you might want to avoid comments like `//***** begin interface of fragment.glfs ****` and convert the to `// ***** begin interface of fragment.glfs ****` (put a space after the comment //)
