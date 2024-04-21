@@ -40,7 +40,6 @@ bool depth_difference_ok(){
 	return abs(gi[0].adjacentPositions[0].z - gi[0].adjacentPositions[1].z) < discard_dst &&
 	abs(gi[0].adjacentPositions[1].z - gi[0].adjacentPositions[2].z) < discard_dst &&
 	abs(gi[0].adjacentPositions[2].z - gi[0].adjacentPositions[3].z) < discard_dst &&
-	abs(gi[0].adjacentPositions[3].z - gi[0].adjacentPositions[0].z) < discard_dst &&
 	abs(gi[0].adjacentPositions[0].z - gi[0].adjacentPositions[2].z) < discard_dst &&
 	abs(gi[0].adjacentPositions[0].z - gi[0].adjacentPositions[3].z) < discard_dst &&
 	abs(gi[0].adjacentPositions[1].z - gi[0].adjacentPositions[3].z) < discard_dst;
