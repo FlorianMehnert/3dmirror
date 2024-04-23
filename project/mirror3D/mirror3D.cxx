@@ -11,9 +11,6 @@
 #include <rgbd_render/rgbd_starter.h>
 #include <rgbd_render/rgbd_point_renderer.h>
 #include <rgbd_capture/rgbd_device.h>
-#include <cgv_gl/box_wire_renderer.h>
-#include <cgv_gl/rectangle_renderer.h>
-#include <cgv_gl/sphere_renderer.h>
 #include <cgv/utils/pointer_test.h>
 #include <chrono>
 #include <numeric>
@@ -22,6 +19,8 @@
 #include <cgv/defines/quote.h>
 #include <cgv/render/shader_library.h>
 #include <cgv/render/performance_monitor.h>
+#include <cgv_gl/gl/gl_performance_monitor.h>
+#include <fltk/events.h>
 
 
 // only temporary for variance of depth frame
@@ -55,7 +54,8 @@ bool rgbd_mesh_renderer::build_shader_program(cgv::render::context& ctx, cgv::re
 class mirror3D :
 	public rgbd::rgbd_starter<cgv::base::node>,
 	public cgv::render::drawable,
-	public cgv::gui::event_handler
+	public cgv::gui::event_handler,
+	public cgv::render::gl::gl_performance_monitor
 {
 	bool calib_outofdate = true;
 protected:
@@ -75,7 +75,6 @@ protected:
 	// rendering configuration
 	cgv::render::point_render_style prs;
 	cgv::render::texture depth_tex, color_tex;
-	cgv::render::box_wire_render_style box_wire_style;
 
 	cgv::render::view* view_ptr = 0;
 
@@ -103,10 +102,12 @@ protected:
 	int bf_size = 10;
 	bool fs_show_marched_depth = false;
 	bool fs_show_sampled_depth = false;
+	bool show_cpu_time = true;
 	bool construct_render_data_using_array;
 
 	float step_size = 0.05;
 	int step = 100;
+	performance_monitor pm = performance_monitor();
 
 	enum ColorMode {
 		COLOR_TEX_SM, NORMAL, BRUTE_FORCE, MIRROR, RAYMARCHING
@@ -215,42 +216,100 @@ public:
 		if (ke.get_action() == cgv::gui::KA_RELEASE)
 			return false;
 		switch (ke.get_key()) {
-			case cgv::gui::KEY_Space:
-				if (ke.get_modifiers() == 0) {
-					on_set(&(is_running = !is_running));
-					return true;
-				}
-				break;
-			case 'C': 
-				coloring = (int) coloring < 4 ? (ColorMode)(((int) coloring) + 1) : COLOR_TEX_SM;
-				on_set(&coloring);
+		case cgv::gui::KEY_Space:
+			if (ke.get_modifiers() == 0) {
+				on_set(&(is_running = !is_running));
 				return true;
-			case 'X':
-				coloring = (int) coloring > 0 ? (ColorMode)(((int)coloring) - 1) : RAYMARCHING;
-				on_set(&coloring);
+			}
+			break;
+		case 'C':
+			coloring = (int)coloring < 4 ? (ColorMode)(((int)coloring) + 1) : COLOR_TEX_SM;
+			on_set(&coloring);
+			return true;
+		case 'X':
+			coloring = (int)coloring > 0 ? (ColorMode)(((int)coloring) - 1) : RAYMARCHING;
+			on_set(&coloring);
+			return true;
+		case 'A':
+			construct_render_data_using_array = !construct_render_data_using_array;
+			on_set(&construct_render_data_using_array);
+			return true;
+		case cgv::gui::KEY_Num_8: if (ka != cgv::gui::KeyAction::KA_RELEASE) {
+			if (ke.get_modifiers() == cgv::gui::EventModifier::EM_ALT) {
+				step++;
+				std::cout << "increase amount of iterations" << step << std::endl;
+				on_set(&step);
 				return true;
-			case 'A':
-				construct_render_data_using_array = !construct_render_data_using_array;
-				on_set(&construct_render_data_using_array);
+			}
+			else {
+				step_size += 0.001;
+				std::cout << "decrease step length" << step_size << std::endl;
+				on_set(&step_size);
 				return true;
-			case '0':
-				shader_calib.eye_separation_factor = 0;
-				on_set(&shader_calib.eye_separation_factor);
+			}
+
+		}
+		case cgv::gui::KEY_Num_2: if (ka != cgv::gui::KeyAction::KA_RELEASE) {
+			if (ke.get_modifiers() == cgv::gui::EventModifier::EM_ALT) {
+				step--;
+				std::cout << "decrease amount of iterations" << step << std::endl;
+				on_set(&step);
 				return true;
-			case cgv::gui::KEY_Left: if (ka != cgv::gui::KeyAction::KA_RELEASE) {
+			}
+			else {
+				step_size -= 0.001;
+				std::cout << "decrease ray lenght" << step_size << std::endl;
+				on_set(&step_size);
+				return true;
+			}
+
+		}
+		case '0':
+			shader_calib.eye_separation_factor = 0;
+			on_set(&shader_calib.eye_separation_factor);
+			return true;
+		case cgv::gui::KEY_Left: if (ka != cgv::gui::KeyAction::KA_RELEASE) {
+			if (ke.get_modifiers() == cgv::gui::EventModifier::EM_ALT) {
+				discard -= 0.001;
+				std::cout << "z tolerance for triangles: " << discard << std::endl;
+				on_set(&discard);
+				return true;
+			}
+			else {
 				shader_calib.eye_separation_factor -= 0.0625f;
 				std::cout << "eye_separation_factor: " << shader_calib.eye_separation_factor << std::endl;
 				on_set(&shader_calib.eye_separation_factor);
 				return true;
 			}
-			case cgv::gui::KEY_Right: if (ka != cgv::gui::KeyAction::KA_RELEASE) {
+			
+		}
+		case cgv::gui::KEY_Right: if (ka != cgv::gui::KeyAction::KA_RELEASE) {
+			if (ke.get_modifiers() == cgv::gui::EventModifier::EM_ALT) {
+				discard += 0.001;
+				std::cout << "z tolerance for triangles: " << discard << std::endl;
+				on_set(&discard);
+				return true;
+			}
+			else {
 				shader_calib.eye_separation_factor += 0.0625f;
 				std::cout << "eye_separation_factor: " << shader_calib.eye_separation_factor << std::endl;
 				on_set(&shader_calib.eye_separation_factor);
 				return true;
 			}
 		}
-
+		case cgv::gui::KEY_Up: if (ka != cgv::gui::KeyAction::KA_RELEASE) {
+			distance += 0.1f;
+			std::cout << "distance culling: " << distance << std::endl;
+			on_set(&distance);
+			return true;
+		}
+		case cgv::gui::KEY_Down: if (ka != cgv::gui::KeyAction::KA_RELEASE) {
+			distance -= 0.1f;
+			std::cout << "distance culling: " << distance << std::endl;
+			on_set(&distance);
+			return true;
+		}
+		}
 		return false;
 	}
 
@@ -291,9 +350,15 @@ public:
 			add_gui("point style", prs);
 			align("\a");
 			end_tree_node(prs);
-		}
-		
+		}	
 	}
+
+	bool self_reflect(cgv::reflect::reflection_handler& rh)
+	{
+		return rh.reflect_member("eye_separation_factor", shader_calib.eye_separation_factor);
+		//return rh.reflect_member("eye_separation_factor", shader_calib.eye_separation_factor);
+	}
+
 	bool init(cgv::render::context& ctx)
 	{
 		start_first_device();
@@ -366,7 +431,6 @@ public:
 				stereo_view_ptr = dynamic_cast<cgv::render::stereo_view*>(find_view_as_node());
 			
 	}
-	// I have a low resolution geometry created from a low res depth texture.I also have a color texture available which I want to use to color.The color texture has a higher resolution.How do I map the color in the fragment shader ?
 	void draw(cgv::render::context& ctx)
 	{
 		if (!stereo_view_ptr)
@@ -415,9 +479,10 @@ public:
 				color_tex.disable(ctx);
 			if (pr.do_geometry_less_rendering())
 				depth_tex.disable(ctx); 
-			}
-			glEnable(GL_CULL_FACE);
 		}
+		glEnable(GL_CULL_FACE);
+	}
+	
 };
 
 #include <cgv/base/register.h>
