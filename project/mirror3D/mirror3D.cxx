@@ -20,8 +20,6 @@
 #include <cgv/render/shader_library.h>
 #include <cgv/render/performance_monitor.h>
 #include <cgv_gl/gl/gl_performance_monitor.h>
-#include <fltk/events.h>
-
 
 // only temporary for variance of depth frame
 #include <iostream>
@@ -36,6 +34,14 @@
 
 // timer event for camera
 #include <future>
+
+// writing to a file
+#include <iostream>
+#include <fstream> 
+#include <chrono>
+#include <ctime>
+#include <string>
+#include <sstream>
 
 using namespace cgv::render;
 using namespace cgv;
@@ -117,6 +123,9 @@ protected:
 	// dispatch each time the button state is toggled
 	bool one_tap_press = false;
 	bool one_tap_flag = false;
+
+	std::ofstream file_name;
+	bool printed = false;
 	
 	std::array<float, 4> camera_edges;
 	std::array<cgv::vec3, 4> camera_corners;
@@ -309,6 +318,9 @@ public:
 			on_set(&distance);
 			return true;
 		}
+		case 'P':
+			printed = false;
+			return true;
 		}
 		return false;
 	}
@@ -363,19 +375,29 @@ public:
 	{
 		start_first_device();
 		ctx.set_bg_clr_idx(4);
+		
+		// start csv
+		std::string path = "C:/Users/flori/source/repos/FlorianMehnert/3dmirror/";
+		auto now = std::chrono::system_clock::now();
+		std::time_t now_c = std::chrono::system_clock::to_time_t(now);
+		std::tm* current_time = std::localtime(&now_c);
+		char date_buffer[80];
+		std::strftime(date_buffer, 80, "%Y-%m-%d", current_time);
+		std::string filename = "data_" + std::string(date_buffer) + ".csv";
+		std::string filepath = path + filename;
+		file_name = std::ofstream(filepath);
+		file_name << "\"eye_separation\";\"culling_distance\";\"triangle_depth_tolerance\";\"ray_length\";\"iterations\";\"fps\";\"mode\"\n";
 
-		// render points
-		cgv::render::ref_point_renderer(ctx, 1);
 		return pr.init(ctx);
 	}
 	void clear(cgv::render::context& ctx)
 	{
-		cgv::render::ref_point_renderer(ctx, -1);
 		pr.clear(ctx);
 		if (is_running) {
 			is_running = false;
 			on_set_base(&is_running, *this);
 		}
+		file_name.close();
 	}
 
 	// prints errors in debug builds if shader code is wrong
@@ -480,9 +502,13 @@ public:
 			if (pr.do_geometry_less_rendering())
 				depth_tex.disable(ctx); 
 		}
+
 		glEnable(GL_CULL_FACE);
+		if (!printed) {
+			file_name << shader_calib.eye_separation_factor << ";" << distance << ";" << discard << ";" << step_size << ";" << step << ";" << fps << ";" <<  coloring << "\n";
+			printed = true;
+		}
 	}
-	
 };
 
 #include <cgv/base/register.h>
