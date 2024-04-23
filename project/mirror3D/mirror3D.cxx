@@ -484,6 +484,7 @@ public:
 			while (!available) {
 				glGetQueryObjectiv(gl_render_query[0], GL_QUERY_RESULT_AVAILABLE, &available);
 			}
+			 
 			glGetQueryObjectui64v(gl_render_query[0], GL_QUERY_RESULT, &elapsed_time);
 			std::cout << "Time taken for drawing: " << (elapsed_time / 1000000.0) << " ms resulting in theoretical " << 1/(((double) elapsed_time/1000000)/1000) << " fps" << std::endl;
 			pr.disable(ctx);
