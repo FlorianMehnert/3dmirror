@@ -223,6 +223,8 @@ mat4 extract_view_matrix(mat4 MV) {
 	return transpose(V);
 }
 
+// scale ray by ray length and current iteration step s
+// transform into worldspace using the camera matrix of the virtual camera
 vec3 world_to_marching(vec3 ro, vec3 rd, float ray_length_m, float s, int c, in out vec3 ray_world) {
 	ray_world = ro + rd * s * ray_length_m;
 	return vec3(get_modelview_matrix() * inverse(get_modelview_eye(c)) * vec4(ray_world, 1.0));

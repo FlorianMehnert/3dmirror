@@ -120,6 +120,8 @@ protected:
 	
 	std::array<float, 4> camera_edges;
 	std::array<cgv::vec3, 4> camera_corners;
+	GLuint gl_render_query[2];
+	GLuint64 elapsed_time;
 
 public:
 	mirror3D() : color_tex("uint8[R,G,B]"), depth_tex("uint16[R]")
@@ -367,6 +369,9 @@ public:
 		// render points
 		cgv::render::ref_point_renderer(ctx, 1);
 		return pr.init(ctx);
+
+		glGenQueries(1, &gl_render_query[0]);
+		glGenQueries(1, &gl_render_query[1]);
 	}
 	void clear(cgv::render::context& ctx)
 	{
@@ -429,7 +434,6 @@ public:
 			}
 			if (!stereo_view_ptr)
 				stereo_view_ptr = dynamic_cast<cgv::render::stereo_view*>(find_view_as_node());
-			
 	}
 	void draw(cgv::render::context& ctx)
 	{
@@ -473,7 +477,15 @@ public:
 			pr.ref_prog().set_uniform(ctx, "ray_length_m", step_size);
 			pr.ref_prog().set_uniform(ctx, "show_marched_depth", fs_show_marched_depth);
 			pr.ref_prog().set_uniform(ctx, "show_sampled_depth", fs_show_sampled_depth);
+			glBeginQuery(GL_TIME_ELAPSED, gl_render_query[0]);
 			pr.draw(ctx, 0, sP.size()); // only using sP size with geometryless rendering
+			glEndQuery(GL_TIME_ELAPSED);
+			GLint available = 0;
+			while (!available) {
+				glGetQueryObjectiv(gl_render_query[0], GL_QUERY_RESULT_AVAILABLE, &available);
+			}
+			glGetQueryObjectui64v(gl_render_query[0], GL_QUERY_RESULT, &elapsed_time);
+			std::cout << "Time taken for drawing: " << (elapsed_time / 1000000.0) << " ms resulting in theoretical " << 1/(((double) elapsed_time/1000000)/1000) << " fps" << std::endl;
 			pr.disable(ctx);
 			if (pr.do_lookup_color())
 				color_tex.disable(ctx);
@@ -481,6 +493,8 @@ public:
 				depth_tex.disable(ctx); 
 		}
 		glEnable(GL_CULL_FACE);
+		
+		
 	}
 	
 };
