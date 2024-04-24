@@ -37,6 +37,14 @@
 // timer event for camera
 #include <future>
 
+// write to file
+#include <iostream>
+#include <fstream>
+#include <vector>
+#include <string>
+#include <chrono>
+#include <ctime>
+
 using namespace cgv::render;
 using namespace cgv;
 
@@ -120,8 +128,14 @@ protected:
 	
 	std::array<float, 4> camera_edges;
 	std::array<cgv::vec3, 4> camera_corners;
+	
+	// fps counting
 	GLuint gl_render_query[2];
 	GLuint64 elapsed_time;
+
+	// writing performance to file
+	std::ofstream csv_file;
+	bool write_to_csv = false;
 
 public:
 	mirror3D() : color_tex("uint8[R,G,B]"), depth_tex("uint16[R]")
@@ -235,6 +249,9 @@ public:
 		case 'A':
 			construct_render_data_using_array = !construct_render_data_using_array;
 			on_set(&construct_render_data_using_array);
+			return true;
+		case 'P':
+			write_to_csv = true;
 			return true;
 		case cgv::gui::KEY_Num_8: if (ka != cgv::gui::KeyAction::KA_RELEASE) {
 			if (ke.get_modifiers() == cgv::gui::EventModifier::EM_ALT) {
@@ -368,10 +385,19 @@ public:
 
 		// render points
 		cgv::render::ref_point_renderer(ctx, 1);
-		return pr.init(ctx);
-
 		glGenQueries(1, &gl_render_query[0]);
 		glGenQueries(1, &gl_render_query[1]);
+
+		auto now = std::chrono::system_clock::now();
+		std::time_t now_c = std::chrono::system_clock::to_time_t(now);
+		std::tm* current_time = std::localtime(&now_c);
+		char date_buffer[80];
+		std::strftime(date_buffer, 80, "%Y-%m-%d", current_time);
+		std::string filename = std::string("C:/Users/flori/Documents/Uni/develop/project/mirror3D/") + "data_" + std::string(date_buffer) + ".csv";
+		csv_file = std::ofstream(filename);
+		csv_file << "\"eye_separation\";\"distance_culling\";\"triangle_tolerance\";\"raymarching_iterations\";\"ray_length\";\"elapsed_time\";\"fps\"" << std::endl;
+
+		return pr.init(ctx);
 	}
 	void clear(cgv::render::context& ctx)
 	{
@@ -381,6 +407,7 @@ public:
 			is_running = false;
 			on_set_base(&is_running, *this);
 		}
+		csv_file.close();
 	}
 
 	// prints errors in debug builds if shader code is wrong
@@ -486,7 +513,12 @@ public:
 			}
 			 
 			glGetQueryObjectui64v(gl_render_query[0], GL_QUERY_RESULT, &elapsed_time);
-			std::cout << "Time taken for drawing: " << (elapsed_time / 1000000.0) << " ms resulting in theoretical " << 1/(((double) elapsed_time/1000000)/1000) << " fps" << std::endl;
+			double fps = 1 / (((double)elapsed_time / 1000000) / 1000);
+			//"\"eye_separation\";\"distance_culling\";\"triangle_tolerance\";\"raymarching_iterations\";\"ray_length\";\"fps\""
+			if (write_to_csv) {
+				csv_file << shader_calib.eye_separation_factor << ";" << distance << ";" << discard << ";" << step << ";" << step_size << ";" << elapsed_time << ";" << fps << std::endl;
+				write_to_csv = false;
+			}
 			pr.disable(ctx);
 			if (pr.do_lookup_color())
 				color_tex.disable(ctx);
@@ -494,8 +526,6 @@ public:
 				depth_tex.disable(ctx); 
 		}
 		glEnable(GL_CULL_FACE);
-		
-		
 	}
 	
 };
