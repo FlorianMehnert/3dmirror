@@ -132,20 +132,8 @@ void main()
 	} else if (coloring == 2) {
 		finish_fragment(intersect_depth_image_bf(), gl_FragCoord.z + fi.depth_offset);
 	
-	// working mirror with wrong coordinates
-	} else if (coloring == 3) {
-		vec3 ro[3], rd[3];
-		vec4 hit_color, final_color;
-		compute_sub_pixel_rays(ro, rd);
-		for (int i = 0; i < 3; i++){
-			lookup_color(ro[i] + rd[i], hit_color);
-			final_color[i] = hit_color[i];
-		}
-		// remember different modelview matricies for each view inbetween the eyes
-		finish_fragment(hit_color, gl_FragCoord.z + fi.depth_offset);
-	
 	// working raymarching
-	} else if (coloring == 4) {
+	} else if (coloring == 3) {
 		vec2 xp;
 		vec3 ro[3], rd[3], marched_ray_depth, sampled_depth;
 		vec4 final_color = vec4(1,0,0,1);

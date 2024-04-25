@@ -105,7 +105,7 @@ protected:
 	std::future<size_t> future_handle;
 
 	float distance = 5.0;
-	float discard = 0.02f;
+	float depth_tolerance = 0.02f;
 	bool depth_lookup = false;
 	int bf_size = 10;
 	bool fs_show_marched_depth = false;
@@ -118,7 +118,7 @@ protected:
 	performance_monitor pm = performance_monitor();
 
 	enum ColorMode {
-		COLOR_TEX_SM, NORMAL, BRUTE_FORCE, MIRROR, RAYMARCHING
+		COLOR_TEX_SM, NORMAL, BRUTE_FORCE, RAYMARCHING
 	};
 	ColorMode coloring = RAYMARCHING;
 
@@ -289,9 +289,9 @@ public:
 			return true;
 		case cgv::gui::KEY_Left: if (ka != cgv::gui::KeyAction::KA_RELEASE) {
 			if (ke.get_modifiers() == cgv::gui::EventModifier::EM_ALT) {
-				discard -= 0.001;
-				std::cout << "z tolerance for triangles: " << discard << std::endl;
-				on_set(&discard);
+				depth_tolerance -= 0.001;
+				std::cout << "z tolerance for triangles: " << depth_tolerance << std::endl;
+				on_set(&depth_tolerance);
 				return true;
 			}
 			else {
@@ -304,9 +304,9 @@ public:
 		}
 		case cgv::gui::KEY_Right: if (ka != cgv::gui::KeyAction::KA_RELEASE) {
 			if (ke.get_modifiers() == cgv::gui::EventModifier::EM_ALT) {
-				discard += 0.001;
-				std::cout << "z tolerance for triangles: " << discard << std::endl;
-				on_set(&discard);
+				depth_tolerance += 0.001;
+				std::cout << "z tolerance for triangles: " << depth_tolerance << std::endl;
+				on_set(&depth_tolerance);
 				return true;
 			}
 			else {
@@ -336,25 +336,26 @@ public:
 	{
 		add_decorator("mirror3D", "heading", "level=1");
 		add_member_control(this, "debug_frame_timing", debug_frame_timing, "check");
-		add_member_control(this, "distance", distance, "value_slider", "min=0;max=10");
-		add_member_control(this, "discard_dst", discard, "value_slider", "min=0;max=1;step=0.01");
-		add_member_control(this, "one time execution", one_tap_press, "toggle");
-		add_member_control(this, "cull mode", coloring, "dropdown", "enums='color, normals, brute-force, mirror, raymarching'");
-		
-		// raymarching - inherited
-		add_member_control(this, "Eye Separation Factor", shader_calib.eye_separation_factor, "value_slider", "min=0;max=20;ticks=true");
-		add_member_control(this, "Debug Matrices", debug_matrices, "check");
-		add_member_control(this, "Interpolate View Matrix", shader_calib.interpolate_view_matrix, "check");
+		find_control(debug_frame_timing)->set("tooltip", "display some debug information about kinect frames");
+		add_member_control(this, "distance", distance, "value_slider", "min=0;max=10;tooltip='adjust maximum range at which geometry can be created based on the depth frame'");
+		add_member_control(this, "triangle depth tolerance", depth_tolerance, "value_slider", "min=0;max=1;step=0.01;tooltip='maximum distance between points at which a quad is created'");
+		add_member_control(this, "cull mode", coloring, "dropdown", "enums='color, normals, brute-force, raymarching'");
+		find_control(coloring)->set("tooltip", "COLORING: quad geometry no stereoscopy\nNORMALS: show normals\nBRUTE-FORCE: perform raymarching using brute force\nRAYMARCHING: cast rays from virtual eyes to depth image");
 		
 		// raymarching - my params
 		provider::align("\a");
-		add_member_control(this, "bf_size", bf_size, "value_slider", "min=0;max=100;step=1");
-		add_member_control(this, "ray step length[m]", step_size, "value_slider", "min=0;max=0.1;step=0.001");
-		add_member_control(this, "max iter raymarching", step, "value_slider", "min=0;max=500;step=1");
-		add_member_control(this, "debug: max ray depth", fs_show_marched_depth, "check");
-		add_member_control(this, "debug: final sampled depth", fs_show_sampled_depth, "check");
-		add_member_control(this, "use array for geometry", construct_render_data_using_array, "check");
+		add_member_control(this, "use array for geometry", construct_render_data_using_array, "check;tooltip='enable to use an array instead of vector to create render data'");
+		add_member_control(this, "BF size", bf_size, "value_slider", "min=0;max=100;step=1;tooltip='BRUTE-FORCE: amount of ´depth pixels to check using the brute force approach'");
+		add_member_control(this, "RM raylenght[m]", step_size, "value_slider", "min=0;max=0.1;step=0.001;tooltip='size in meters of ray increments'");
+		add_member_control(this, "RM max iterations", step, "value_slider", "min=0;max=500;step=1;tooltip='maximum amount of iterations a ray can do before terminating'");
+		add_member_control(this, "Debug max ray depth", fs_show_marched_depth, "check;tooltip='RAYMARCHING: show depth at which rays terminated'");
+		add_member_control(this, "Debug final sampled depth", fs_show_sampled_depth, "check;tooltip='RAYMARCHING: show calculated depth'");
 		
+		// raymarching - inherited
+		add_member_control(this, "Eye Separation Factor", shader_calib.eye_separation_factor, "value_slider", "min=0;max=20;ticks=true;tooltip='distance between virtual eyes'");
+		add_member_control(this, "Debug Matrices", debug_matrices, "check");
+		add_member_control(this, "Interpolate View Matrix", shader_calib.interpolate_view_matrix, "check");
+
 		provider::align("\b");
 
 		if (begin_tree_node("capture", is_running)) {
@@ -363,13 +364,6 @@ public:
 			align("\b");
 			end_tree_node(is_running);
 		}
-		if (begin_tree_node("point style", prs)) {
-			align("\a");
-			pr.create_gui(this, *this);
-			add_gui("point style", prs);
-			align("\a");
-			end_tree_node(prs);
-		}	
 	}
 
 	bool self_reflect(cgv::reflect::reflection_handler& rh)
@@ -495,7 +489,7 @@ public:
 			pr.ref_prog().set_uniform(ctx, "depth_image", 0);
 			pr.ref_prog().set_uniform(ctx, "color_image", 1);
 			pr.ref_prog().set_uniform(ctx, "max_distance", distance);
-			pr.ref_prog().set_uniform(ctx, "discard_dst", discard);
+			pr.ref_prog().set_uniform(ctx, "discard_dst", depth_tolerance);
 			pr.ref_prog().set_uniform(ctx, "coloring", (int)coloring);
 			shader_calib.set_uniforms(ctx, pr.ref_prog(), *stereo_view_ptr);
 			pr.ref_prog().set_uniform(ctx, "eye_separation", shader_calib.eye_separation_factor/1000);
@@ -516,7 +510,7 @@ public:
 			double fps = 1 / (((double)elapsed_time / 1000000) / 1000);
 			//"\"eye_separation\";\"distance_culling\";\"triangle_tolerance\";\"raymarching_iterations\";\"ray_length\";\"fps\""
 			if (write_to_csv) {
-				csv_file << shader_calib.eye_separation_factor << ";" << distance << ";" << discard << ";" << step << ";" << step_size << ";" << elapsed_time << ";" << fps << std::endl;
+				csv_file << shader_calib.eye_separation_factor << ";" << distance << ";" << depth_tolerance << ";" << step << ";" << step_size << ";" << elapsed_time << ";" << fps << std::endl;
 				write_to_csv = false;
 			}
 			pr.disable(ctx);
