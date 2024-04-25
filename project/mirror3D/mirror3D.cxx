@@ -18,10 +18,7 @@
 #include <holo_disp/shader_display_calibration.h>
 #include <cgv/defines/quote.h>
 #include <cgv/render/shader_library.h>
-#include <cgv/render/performance_monitor.h>
-#include <cgv_gl/gl/gl_performance_monitor.h>
-#include <fltk/events.h>
-
+#include <filesystem>
 
 // only temporary for variance of depth frame
 #include <iostream>
@@ -30,9 +27,6 @@
 
 // specifically for mirror3D plugin
 #include <frame.h>
-
-// constructing pointclouds
-#include "point_cloud/point_cloud.h"
 
 // timer event for camera
 #include <future>
@@ -62,8 +56,7 @@ bool rgbd_mesh_renderer::build_shader_program(cgv::render::context& ctx, cgv::re
 class mirror3D :
 	public rgbd::rgbd_starter<cgv::base::node>,
 	public cgv::render::drawable,
-	public cgv::gui::event_handler,
-	public cgv::render::gl::gl_performance_monitor
+	public cgv::gui::event_handler
 {
 	bool calib_outofdate = true;
 protected:
@@ -104,9 +97,8 @@ protected:
 	// somthing for the timer event from vr_rgbd
 	std::future<size_t> future_handle;
 
-	float distance = 5.0;
-	float depth_tolerance = 0.02f;
-	bool depth_lookup = false;
+	float distance = 5.0; // depth culling distance
+	float depth_tolerance = 0.02f; // maximum distance for points before quad is discarded
 	int bf_size = 10;
 	bool fs_show_marched_depth = false;
 	bool fs_show_sampled_depth = false;
@@ -115,20 +107,12 @@ protected:
 
 	float step_size = 0.05;
 	int step = 100;
-	performance_monitor pm = performance_monitor();
 
 	enum ColorMode {
 		COLOR_TEX_SM, NORMAL, BRUTE_FORCE, RAYMARCHING
 	};
-	ColorMode coloring = RAYMARCHING;
+	ColorMode coloring = RAYMARCHING; // switch between different modes in shaders
 
-	// dispatch each time the button state is toggled
-	bool one_tap_press = false;
-	bool one_tap_flag = false;
-	
-	std::array<float, 4> camera_edges;
-	std::array<cgv::vec3, 4> camera_corners;
-	
 	// fps counting
 	GLuint gl_render_query[2];
 	GLuint64 elapsed_time;
@@ -386,8 +370,8 @@ public:
 		std::time_t now_c = std::chrono::system_clock::to_time_t(now);
 		std::tm* current_time = std::localtime(&now_c);
 		char date_buffer[80];
-		std::strftime(date_buffer, 80, "%Y-%m-%d", current_time);
-		std::string filename = std::string("C:/Users/flori/Documents/Uni/develop/project/mirror3D/") + "data_" + std::string(date_buffer) + ".csv";
+		std::strftime(date_buffer, 80, "%Y-%m-%d_%H-%M-%S", current_time);
+		std::string filename = std::string("C:/Users/flori/source/repos/FlorianMehnert/3dmirror/") + "data_final_" + std::string(date_buffer) + ".csv";
 		csv_file = std::ofstream(filename);
 		csv_file << "\"eye_separation\";\"distance_culling\";\"triangle_tolerance\";\"raymarching_iterations\";\"ray_length\";\"elapsed_time\";\"fps\"" << std::endl;
 
@@ -460,9 +444,6 @@ public:
 	{
 		if (!stereo_view_ptr)
 			return;
-		if (one_tap_press != one_tap_flag) {
-			one_tap_flag = one_tap_press;
-		}
 		if (!pr.ref_prog().is_linked())
 			return;
 		if (!depth_tex.is_created())
@@ -511,6 +492,7 @@ public:
 			//"\"eye_separation\";\"distance_culling\";\"triangle_tolerance\";\"raymarching_iterations\";\"ray_length\";\"fps\""
 			if (write_to_csv) {
 				csv_file << shader_calib.eye_separation_factor << ";" << distance << ";" << depth_tolerance << ";" << step << ";" << step_size << ";" << elapsed_time << ";" << fps << std::endl;
+				std::cout << elapsed_time << " <- elapsed time | fps -> " << fps << std::endl;
 				write_to_csv = false;
 			}
 			pr.disable(ctx);
@@ -521,7 +503,6 @@ public:
 		}
 		glEnable(GL_CULL_FACE);
 	}
-	
 };
 
 #include <cgv/base/register.h>
