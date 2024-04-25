@@ -35,13 +35,13 @@
 // timer event for camera
 #include <future>
 
-// writing to a file
+// write to file
 #include <iostream>
-#include <fstream> 
+#include <fstream>
+#include <vector>
+#include <string>
 #include <chrono>
 #include <ctime>
-#include <string>
-#include <sstream>
 
 using namespace cgv::render;
 using namespace cgv;
@@ -123,12 +123,17 @@ protected:
 	// dispatch each time the button state is toggled
 	bool one_tap_press = false;
 	bool one_tap_flag = false;
-
-	std::ofstream file_name;
-	bool printed = false;
 	
 	std::array<float, 4> camera_edges;
 	std::array<cgv::vec3, 4> camera_corners;
+	
+	// fps counting
+	GLuint gl_render_query[2];
+	GLuint64 elapsed_time;
+
+	// writing performance to file
+	std::ofstream csv_file;
+	bool write_to_csv = false;
 
 public:
 	mirror3D() : color_tex("uint8[R,G,B]"), depth_tex("uint16[R]")
@@ -243,6 +248,9 @@ public:
 			construct_render_data_using_array = !construct_render_data_using_array;
 			on_set(&construct_render_data_using_array);
 			return true;
+		case 'P':
+			write_to_csv = true;
+			return true;
 		case cgv::gui::KEY_Num_8: if (ka != cgv::gui::KeyAction::KA_RELEASE) {
 			if (ke.get_modifiers() == cgv::gui::EventModifier::EM_ALT) {
 				step++;
@@ -318,9 +326,6 @@ public:
 			on_set(&distance);
 			return true;
 		}
-		case 'P':
-			printed = false;
-			return true;
 		}
 		return false;
 	}
@@ -375,29 +380,32 @@ public:
 	{
 		start_first_device();
 		ctx.set_bg_clr_idx(4);
-		
-		// start csv
-		std::string path = "C:/Users/flori/source/repos/FlorianMehnert/3dmirror/";
+
+		// render points
+		cgv::render::ref_point_renderer(ctx, 1);
+		glGenQueries(1, &gl_render_query[0]);
+		glGenQueries(1, &gl_render_query[1]);
+
 		auto now = std::chrono::system_clock::now();
 		std::time_t now_c = std::chrono::system_clock::to_time_t(now);
 		std::tm* current_time = std::localtime(&now_c);
 		char date_buffer[80];
-		std::strftime(date_buffer, 80, "%Y-%m-%d", current_time);
-		std::string filename = "data_" + std::string(date_buffer) + ".csv";
-		std::string filepath = path + filename;
-		file_name = std::ofstream(filepath);
-		file_name << "\"eye_separation\";\"culling_distance\";\"triangle_depth_tolerance\";\"ray_length\";\"iterations\";\"fps\";\"mode\"\n";
+		std::strftime(date_buffer, 80, "%Y-%m-%d_%H-%M-%S", current_time);
+		std::string filename = std::string("C:/Users/flori/source/repos/FlorianMehnert/3dmirror/") + "data_final_" + std::string(date_buffer) + ".csv";
+		csv_file = std::ofstream(filename);
+		csv_file << "\"eye_separation\";\"distance_culling\";\"triangle_tolerance\";\"raymarching_iterations\";\"ray_length\";\"elapsed_time\";\"fps\"" << std::endl;
 
 		return pr.init(ctx);
 	}
 	void clear(cgv::render::context& ctx)
 	{
+		cgv::render::ref_point_renderer(ctx, -1);
 		pr.clear(ctx);
 		if (is_running) {
 			is_running = false;
 			on_set_base(&is_running, *this);
 		}
-		file_name.close();
+		csv_file.close();
 	}
 
 	// prints errors in debug builds if shader code is wrong
@@ -451,7 +459,6 @@ public:
 			}
 			if (!stereo_view_ptr)
 				stereo_view_ptr = dynamic_cast<cgv::render::stereo_view*>(find_view_as_node());
-			
 	}
 	void draw(cgv::render::context& ctx)
 	{
@@ -495,19 +502,29 @@ public:
 			pr.ref_prog().set_uniform(ctx, "ray_length_m", step_size);
 			pr.ref_prog().set_uniform(ctx, "show_marched_depth", fs_show_marched_depth);
 			pr.ref_prog().set_uniform(ctx, "show_sampled_depth", fs_show_sampled_depth);
+			glBeginQuery(GL_TIME_ELAPSED, gl_render_query[0]);
 			pr.draw(ctx, 0, sP.size()); // only using sP size with geometryless rendering
+			glEndQuery(GL_TIME_ELAPSED);
+			GLint available = 0;
+			while (!available) {
+				glGetQueryObjectiv(gl_render_query[0], GL_QUERY_RESULT_AVAILABLE, &available);
+			}
+			 
+			glGetQueryObjectui64v(gl_render_query[0], GL_QUERY_RESULT, &elapsed_time);
+			double fps = 1 / (((double)elapsed_time / 1000000) / 1000);
+			//"\"eye_separation\";\"distance_culling\";\"triangle_tolerance\";\"raymarching_iterations\";\"ray_length\";\"fps\""
+			if (write_to_csv) {
+				csv_file << shader_calib.eye_separation_factor << ";" << distance << ";" << discard << ";" << step << ";" << step_size << ";" << elapsed_time << ";" << fps << std::endl;
+				std::cout << elapsed_time << " <- elapsed time | fps -> " << fps << std::endl;
+				write_to_csv = false;
+			}
 			pr.disable(ctx);
 			if (pr.do_lookup_color())
 				color_tex.disable(ctx);
 			if (pr.do_geometry_less_rendering())
 				depth_tex.disable(ctx); 
 		}
-
 		glEnable(GL_CULL_FACE);
-		if (!printed) {
-			file_name << shader_calib.eye_separation_factor << ";" << distance << ";" << discard << ";" << step_size << ";" << step << ";" << fps << ";" <<  coloring << "\n";
-			printed = true;
-		}
 	}
 };
 
