@@ -24,6 +24,7 @@ uniform float ray_length_m;
 uniform float view;
 uniform bool show_marched_depth;
 uniform bool show_sampled_depth;
+uniform float eye_separation;
 
 
 // this is adapted point.glfs
@@ -129,11 +130,11 @@ void main()
 		finish_fragment(vec4(fi.normal.xyz * 10000, 1.0), gl_FragCoord.z + fi.depth_offset);
 	
 	// bullying the GPU
-	} else if (coloring == 2) {
-		finish_fragment(intersect_depth_image_bf(), gl_FragCoord.z + fi.depth_offset);
+	//} else if (coloring == 2) {
+	//	finish_fragment(intersect_depth_image_bf(), gl_FragCoord.z + fi.depth_offset);
 	
 	// working raymarching
-	} else if (coloring == 3) {
+	} else if (coloring == 2) {
 		vec2 xp;
 		vec3 ro[3], rd[3], marched_ray_depth, sampled_depth;
 		vec4 final_color = vec4(1,0,0,1);
@@ -141,29 +142,55 @@ void main()
 		bool hit_color[3];
 		float depth, max_ray_depth, max_sample_depth, ray_depth;
 		bool is_terrain = true;
+		int sub_pixel_rays = 3;
 		
 		compute_sub_pixel_rays(ro, rd);
-		
-		// *** by hand reconstructing texture pixel space of kinect from ray-origin ***
-		for (int c = 0;  c < 3; c++){
-			hit_color[c] = false;
+		if (eye_separation == 0){
+			hit_color[0] = false;
+			hit_color[1] = false;
+			hit_color[2] = false;
 			int result;
 			vec3 ray_world, ray_world_correct_direction, p;
 			
 			for (int s = 1; s < raymarch_limit; s++) {
-				if (march_along(ro[c], rd[c], ray_length_m, ray_depth, s, c, ray_world_correct_direction, ray_world, p) == FOUND_POINT){
-				hit_color[c] = true;
+				if (march_along(ro[1], rd[1], ray_length_m, ray_depth, s, 1, ray_world_correct_direction, ray_world, p) == FOUND_POINT){
+				hit_color[0] = true;
+				hit_color[1] = true;
+				hit_color[2] = true;
 					break;
 				}
 			}
 			marched_ray_depth = ray_world_correct_direction;
 
 			// debug colors
-			sampled_depth[c] = p.z;
+			sampled_depth[1] = p.z;
 			if (!lookup_color(p, color)){
 			discard;
 			};
-			final_color[c] = color[c];	
+			final_color = color;	
+			
+		}else{
+			// *** by hand reconstructing texture pixel space of kinect from ray-origin ***
+			for (int c = 0;  c < 3; c++){
+				hit_color[c] = false;
+				int result;
+				vec3 ray_world, ray_world_correct_direction, p;
+			
+				for (int s = 1; s < raymarch_limit; s++) {
+					if (march_along(ro[c], rd[c], ray_length_m, ray_depth, s, c, ray_world_correct_direction, ray_world, p) == FOUND_POINT){
+					hit_color[c] = true;
+						break;
+					}
+				}
+				marched_ray_depth = ray_world_correct_direction;
+
+				// debug colors
+				sampled_depth[c] = p.z;
+				if (!lookup_color(p, color)){
+				discard;
+				};
+				final_color[c] = color[c];	
+			}
 		}
 		
 		// catching bad lookups: make black transparent

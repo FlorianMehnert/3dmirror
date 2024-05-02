@@ -109,7 +109,7 @@ protected:
 	int step = 100;
 
 	enum ColorMode {
-		COLOR_TEX_SM, NORMAL, BRUTE_FORCE, RAYMARCHING
+		COLOR_TEX_SM, NORMAL, RAYMARCHING
 	};
 	ColorMode coloring = RAYMARCHING; // switch between different modes in shaders
 
@@ -223,7 +223,7 @@ public:
 			}
 			break;
 		case 'C':
-			coloring = (int)coloring < 4 ? (ColorMode)(((int)coloring) + 1) : COLOR_TEX_SM;
+			coloring = (int)coloring < 3 ? (ColorMode)(((int)coloring) + 1) : COLOR_TEX_SM;
 			on_set(&coloring);
 			return true;
 		case 'X':
@@ -321,24 +321,22 @@ public:
 		add_decorator("mirror3D", "heading", "level=1");
 		add_member_control(this, "debug_frame_timing", debug_frame_timing, "check");
 		find_control(debug_frame_timing)->set("tooltip", "display some debug information about kinect frames");
-		add_member_control(this, "distance", distance, "value_slider", "min=0;max=10;tooltip='adjust maximum range at which geometry can be created based on the depth frame'");
-		add_member_control(this, "triangle depth tolerance", depth_tolerance, "value_slider", "min=0;max=1;step=0.01;tooltip='maximum distance between points at which a quad is created'");
-		add_member_control(this, "cull mode", coloring, "dropdown", "enums='color, normals, brute-force, raymarching'");
-		find_control(coloring)->set("tooltip", "COLORING: quad geometry no stereoscopy\nNORMALS: show normals\nBRUTE-FORCE: perform raymarching using brute force\nRAYMARCHING: cast rays from virtual eyes to depth image");
+		add_member_control(this, "Distance", distance, "value_slider", "min=0;max=10;tooltip='adjust maximum range at which geometry can be created based on the depth frame'");
+		add_member_control(this, "Depth Tolerance", depth_tolerance, "value_slider", "min=0;max=1;step=0.01;tooltip='maximum distance between points at which a quad is created'");
+		add_member_control(this, "Render Mode", coloring, "dropdown", "enums='color, normals, raymarching'");
+		find_control(coloring)->set("tooltip", "COLORING: quad geometry no stereoscopy\nNORMALS: show normals\nRAYMARCHING: cast rays from virtual eyes to depth image");
 		
 		// raymarching - my params
 		provider::align("\a");
-		add_member_control(this, "use array for geometry", construct_render_data_using_array, "check;tooltip='enable to use an array instead of vector to create render data'");
-		add_member_control(this, "BF size", bf_size, "value_slider", "min=0;max=100;step=1;tooltip='BRUTE-FORCE: amount of ´depth pixels to check using the brute force approach'");
-		add_member_control(this, "RM raylenght[m]", step_size, "value_slider", "min=0;max=0.1;step=0.001;tooltip='size in meters of ray increments'");
-		add_member_control(this, "RM max iterations", step, "value_slider", "min=0;max=500;step=1;tooltip='maximum amount of iterations a ray can do before terminating'");
-		add_member_control(this, "Debug max ray depth", fs_show_marched_depth, "check;tooltip='RAYMARCHING: show depth at which rays terminated'");
-		add_member_control(this, "Debug final sampled depth", fs_show_sampled_depth, "check;tooltip='RAYMARCHING: show calculated depth'");
+		//add_member_control(this, "use array for geometry", construct_render_data_using_array, "check;tooltip='enable to use an array instead of vector to create render data'");
+		//add_member_control(this, "BF size", bf_size, "value_slider", "min=0;max=100;step=1;tooltip='BRUTE-FORCE: amount of ´depth pixels to check using the brute force approach'");
+		add_member_control(this, "Raylenght [m]", step_size, "value_slider", "min=0;max=0.1;step=0.001;tooltip='size in meters of ray increments'");
+		add_member_control(this, "Max. Iterations", step, "value_slider", "min=0;max=500;step=1;tooltip='maximum amount of iterations a ray can do before terminating'");
 		
 		// raymarching - inherited
 		add_member_control(this, "Eye Separation Factor", shader_calib.eye_separation_factor, "value_slider", "min=0;max=20;ticks=true;tooltip='distance between virtual eyes'");
-		add_member_control(this, "Debug Matrices", debug_matrices, "check");
-		add_member_control(this, "Interpolate View Matrix", shader_calib.interpolate_view_matrix, "check");
+		//add_member_control(this, "Debug Matrices", debug_matrices, "check");
+		//add_member_control(this, "Interpolate View Matrix", shader_calib.interpolate_view_matrix, "check");
 
 		provider::align("\b");
 
@@ -352,7 +350,7 @@ public:
 
 	bool self_reflect(cgv::reflect::reflection_handler& rh)
 	{
-		return rh.reflect_member("eye_separation_factor", shader_calib.eye_separation_factor);
+		return rh.reflect_member("Eye Distance", shader_calib.eye_separation_factor);
 		//return rh.reflect_member("eye_separation_factor", shader_calib.eye_separation_factor);
 	}
 
@@ -371,7 +369,7 @@ public:
 		std::tm* current_time = std::localtime(&now_c);
 		char date_buffer[80];
 		std::strftime(date_buffer, 80, "%Y-%m-%d_%H-%M-%S", current_time);
-		std::string filename = std::string("C:/Users/flori/source/repos/FlorianMehnert/3dmirror/") + "data_final_" + std::string(date_buffer) + ".csv";
+		std::string filename = std::string("C:/Users/flori/Documents/Uni/develop/project/mirror3D/") + "data_final_" + std::string(date_buffer) + ".csv";
 		csv_file = std::ofstream(filename);
 		csv_file << "\"eye_separation\";\"distance_culling\";\"triangle_tolerance\";\"raymarching_iterations\";\"ray_length\";\"elapsed_time\";\"fps\"" << std::endl;
 
@@ -431,7 +429,6 @@ public:
 					rgbd::construct_rgbd_render_data_with_color(depth_frame, warped_color_frame, sP, sC);
 				}
 				else
-					// TODO: use own function to avoid pushback : alternatively use own construct function (without pushback)
 					if (construct_render_data_using_array) 
 						construct_my_render_data(depth_frame, aP, 1, 1);
 					else 
