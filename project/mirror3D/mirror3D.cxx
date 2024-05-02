@@ -97,7 +97,7 @@ protected:
 	// somthing for the timer event from vr_rgbd
 	std::future<size_t> future_handle;
 
-	float distance = 5.0; // depth culling distance
+	float distance = 1.0; // depth culling distance
 	float depth_tolerance = 0.02f; // maximum distance for points before quad is discarded
 	int bf_size = 10;
 	bool fs_show_marched_depth = false;
@@ -106,7 +106,7 @@ protected:
 	bool construct_render_data_using_array;
 
 	float step_size = 0.05;
-	int step = 100;
+	int step = 38;
 
 	enum ColorMode {
 		COLOR_TEX_SM, NORMAL, RAYMARCHING
@@ -137,6 +137,7 @@ public:
 			std::cerr << "could not read holographic display calibration form <"
 			<< QUOTE_SYMBOL_VALUE(INPUT_DIR) "/visual.json>" << std::endl;
 		shader_calib.compute(disp_calib);
+		shader_calib.eye_separation_factor = 0.0;
 
 	}
 	void on_set(void* member_ptr)
@@ -369,7 +370,9 @@ public:
 		std::tm* current_time = std::localtime(&now_c);
 		char date_buffer[80];
 		std::strftime(date_buffer, 80, "%Y-%m-%d_%H-%M-%S", current_time);
-		std::string filename = std::string("C:/Users/flori/Documents/Uni/develop/project/mirror3D/") + "data_final_" + std::string(date_buffer) + ".csv";
+		//std::string filename = std::string("C:/Users/flori/Documents/Uni/develop/project/mirror3D/") + "data_final_" + std::string(date_buffer) + ".csv";
+		std::string filename = std::string("C:/Users/flori/source/repos/FlorianMehnert/3dmirror/") + "data_final_" + std::string(date_buffer) + ".csv";
+	
 		csv_file = std::ofstream(filename);
 		csv_file << "\"eye_separation\";\"distance_culling\";\"triangle_tolerance\";\"raymarching_iterations\";\"ray_length\";\"elapsed_time\";\"fps\"" << std::endl;
 
